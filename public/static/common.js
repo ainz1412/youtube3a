@@ -70,34 +70,97 @@ function songRow(s, { num, mine, actions = [] } = {}) {
     actions.length ? el('div', { class: 'actions' }, actions) : null);
 }
 
-function renderChatMsg(m) {
-  if (m.system) return el('div', { class: 'msg sys' }, m.text);
-  return el('div', { class: 'msg' + (m.host ? ' host' : '') },
-    el('b', {}, m.name + (m.host ? ' (DJ)' : '')), ': ', m.text, el('time', {}, fmtTime(m.t)));
-}
-
-// getExtra() trả về các trường gửi kèm (mã phòng / mật khẩu chủ phòng)
-function setupChat(container, getName, getExtra = () => ({})) {
+// ---------- Chat thời gian thực ----------
+// opts.isMine(m)  -> tin nhắn của chính mình (hiện bên phải)
+// opts.onTyping() -> gọi khi mình đang gõ (đã giới hạn tần suất)
+function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
   const msgs = $('.msgs', container);
   const form = $('form', container);
   const input = $('input', form);
-  const add = (m) => {
-    const atBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60;
-    msgs.append(renderChatMsg(m));
-    while (msgs.children.length > 150) msgs.firstChild.remove();
-    if (atBottom) msgs.scrollTop = msgs.scrollHeight;
-  };
+  const typingEl = $('.typing', container);
+  const isMine = opts.isMine || (() => false);
+  let prev = null;          // tin trước đó (để gộp tin liên tiếp của cùng 1 người)
+  let lastEl = null;
+  let unread = 0, newBtn = null;
+  const typers = new Map(); // name -> hết hạn lúc
+
+  const nearBottom = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
+  const toBottom = () => { msgs.scrollTop = msgs.scrollHeight; };
+
+  function render(m) {
+    if (m.system) { prev = null; return el('div', { class: 'msg sys' }, m.text); }
+    const mine = isMine(m);
+    const key = m.owner || m.name;
+    const grouped = prev && !prev.system && (prev.owner || prev.name) === key && m.t - prev.t < 3 * 60 * 1000;
+    prev = m;
+    return el('div', { class: 'msg' + (mine ? ' mine' : '') + (m.host ? ' host' : '') + (grouped ? '' : ' gap') },
+      grouped ? null : el('div', { class: 'who' }, m.name + (m.host ? ' (DJ)' : '')),
+      el('div', { class: 'bubble' }, m.text),
+      el('time', {}, fmtTime(m.t)));
+  }
+
+  function add(m, { initial = false } = {}) {
+    const stick = initial || nearBottom() || isMine(m);
+    if (lastEl) lastEl.classList.remove('last');
+    if (prev && !m.system && (prev.owner || prev.name) === (m.owner || m.name) && lastEl) lastEl.querySelector('time')?.remove();
+    const node = render(m);
+    if (newBtn) msgs.insertBefore(node, newBtn); else msgs.append(node);
+    if (!m.system) { node.classList.add('last'); lastEl = node; }
+    while (msgs.children.length > 200) msgs.firstChild.remove();
+    if (m.name) { typers.delete(m.name); drawTyping(); }
+    if (stick) toBottom();
+    else if (!initial) {
+      unread++;
+      if (!newBtn) { newBtn = el('div', { class: 'newmsg', onclick: () => { toBottom(); } }); msgs.append(newBtn); }
+      newBtn.textContent = `⬇ ${unread} tin nhắn mới`;
+    }
+  }
+  msgs.addEventListener('scroll', () => {
+    if (newBtn && nearBottom()) { newBtn.remove(); newBtn = null; unread = 0; }
+  });
+
+  function drawTyping() {
+    if (!typingEl) return;
+    const now = Date.now();
+    for (const [n, exp] of typers) if (exp < now) typers.delete(n);
+    const names = [...typers.keys()];
+    typingEl.innerHTML = '';
+    if (!names.length) return;
+    const who = names.length > 2 ? `${names.slice(0, 2).join(', ')} và ${names.length - 2} người khác` : names.join(' và ');
+    typingEl.append(who + ' đang nhập ', el('span', { class: 'dots' }, el('i'), el('i'), el('i')));
+  }
+  setInterval(drawTyping, 1000);
+
+  let lastTypingSent = 0;
+  input.addEventListener('input', () => {
+    if (!opts.onTyping || !input.value.trim()) return;
+    const now = Date.now();
+    if (now - lastTypingSent > 2500) { lastTypingSent = now; opts.onTyping(); }
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
+    lastTypingSent = 0;
+    input.focus();
     try { await api('/api/chat', { name: getName(), text, cid: getClientId(), ...getExtra() }); }
     catch (err) { toast(err.message, true); input.value = text; }
   });
+
   return {
-    add,
-    reset(list) { msgs.innerHTML = ''; list.forEach(add); msgs.scrollTop = msgs.scrollHeight; },
+    add: (m) => add(m),
+    reset(list) {
+      msgs.innerHTML = ''; prev = null; lastEl = null; newBtn = null; unread = 0;
+      list.forEach((m) => add(m, { initial: true }));
+      toBottom();
+    },
+    typing({ name }) {
+      if (!name) return;
+      typers.set(name, Date.now() + 4000);
+      drawTyping();
+    },
   };
 }
 
@@ -130,6 +193,7 @@ function connectWS(getParams, handlers) {
   document.addEventListener('visibilitychange', onVisible);
   open();
   return {
+    send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
     close() { closed = true; clearTimeout(timer); clearInterval(ping); document.removeEventListener('visibilitychange', onVisible); ws && ws.close(); },
   };
 }

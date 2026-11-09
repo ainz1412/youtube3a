@@ -56,6 +56,7 @@
         <span class="muted small" style="margin-left:8px">🔊</span>
         <input type="range" id="vol" min="0" max="100" value="80">
         <span class="muted small" id="time"></span>
+        <span class="badge" id="rate" title="Tốc độ phát thực tế. Luôn được giữ ở 1x.">Tốc độ 1x</span>
       </div>
     </section>
 
@@ -80,6 +81,7 @@
     <section class="panel chat" id="chatPanel">
       <h2>Chat chung <button class="icon small" id="clearChat" style="margin-left:auto">Xóa chat</button></h2>
       <div class="msgs"></div>
+      <div class="typing"></div>
       <form>
         <input type="text" placeholder="Nhắn với tư cách DJ..." maxlength="500" autocomplete="off">
         <button class="primary" type="submit">Gửi</button>
@@ -105,7 +107,11 @@
   let pw = localStorage.getItem('jb_pw') || '';
   const hostName = localStorage.getItem('jb_host_name') || 'DJ';
   const hapi = (path, body = {}) => api(path, { ...body, pw }).catch((e) => { toast(e.message, true); });
-  const chat = setupChat($('#chatPanel'), () => hostName, () => ({ pw }));
+  let hostConn = null;
+  const chat = setupChat($('#chatPanel'), () => hostName, () => ({ pw }), {
+    isMine: (m) => !!m.host,
+    onTyping: () => hostConn && hostConn.send({ type: 'typing' }),
+  });
   let player = null, playerReady = false, started = false, loggedIn = false;
   let state = null, loadedId = null;
 
@@ -116,8 +122,8 @@
     loggedIn = true;
     $('#loginModal').classList.add('hidden');
     showShare(r.pin || '');
-    connectWS(() => ({ role: 'host', pw }), {
-      state: render, chatHistory: chat.reset, chat: chat.add,
+    hostConn = connectWS(() => ({ role: 'host', pw }), {
+      state: render, chatHistory: chat.reset, chat: chat.add, typing: chat.typing,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),
     });
@@ -146,12 +152,13 @@
       width: '100%', height: '100%',
       playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
       events: {
-        onReady: () => { playerReady = true; player.setVolume(+$('#vol').value); sync(); },
+        onReady: () => { playerReady = true; player.setVolume(+$('#vol').value); lockRate(); sync(); },
+        onPlaybackRateChange: () => lockRate(),
         onStateChange: (e) => {
           if (!loggedIn) return;
           if (e.data === YT.PlayerState.ENDED && state?.nowPlaying) hapi('/api/host/ended', { id: state.nowPlaying.id });
           if (e.data === YT.PlayerState.PAUSED) { setPPLabel(true); if (!state?.paused) hapi('/api/host/paused', { paused: true }); }
-          if (e.data === YT.PlayerState.PLAYING) { setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false }); }
+          if (e.data === YT.PlayerState.PLAYING) { lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false }); }
         },
         onError: (e) => {
           console.warn('YT error', e.data);
@@ -163,6 +170,23 @@
   const ytScript = document.createElement('script');
   ytScript.src = 'https://www.youtube.com/iframe_api';
   document.head.append(ytScript);
+
+  // Luôn phát đúng tốc độ gốc (1x). Nếu có tiện ích trình duyệt hoặc thiết lập YouTube
+  // làm thay đổi tốc độ, tự đưa về 1x và báo cho chủ phòng biết.
+  let rateWarned = false;
+  function lockRate() {
+    if (!playerReady || typeof player.getPlaybackRate !== 'function') return;
+    const r = player.getPlaybackRate();
+    $('#rate').textContent = 'Tốc độ ' + r + 'x';
+    $('#rate').classList.toggle('me', r !== 1);
+    if (r !== 1) {
+      player.setPlaybackRate(1);
+      if (!rateWarned) {
+        rateWarned = true;
+        toast(`Phát hiện nhạc đang chạy ${r}x — đã đưa về 1x. Nếu lặp lại, hãy tắt tiện ích tăng tốc video trong Chrome.`, true);
+      }
+    }
+  }
 
   function sync() {
     if (!playerReady || !started || !state) return;
@@ -190,6 +214,7 @@
   $('#clearChat').addEventListener('click', () => { if (confirm('Xóa toàn bộ chat?')) hapi('/api/host/clearchat'); });
 
   setInterval(() => {
+    lockRate();
     if (!playerReady || !state?.nowPlaying || typeof player.getCurrentTime !== 'function') return;
     const t = player.getCurrentTime() || 0, d = player.getDuration() || state.nowPlaying.duration || 1;
     $('#prog').style.width = Math.min(100, (t / d) * 100) + '%';

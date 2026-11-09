@@ -8,24 +8,36 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎶</text></svg>">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  main { display: grid; gap: 14px; padding: 14px; max-width: 1200px; margin: 0 auto; grid-template-columns: 1fr; }
-  @media (min-width: 900px) {
-    main { grid-template-columns: 1.3fr 1fr; height: calc(100vh - 57px); }
-    #addPanel { display: flex; flex-direction: column; min-height: 0; }
-    #results { flex: 1; min-height: 0; }
-    #side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-    #queuePanel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    #queue { flex: 1; min-height: 0; }
-    #chatPanel { flex: 1; min-height: 0; }
-  }
-  @media (max-width: 899px) {
-    #side { display: contents; }
-    #nowPanel { order: -1; }
-    #results { max-height: 60vh; } #queue { max-height: 50vh; } .chat .msgs { max-height: 45vh; }
-  }
+  main { display: grid; gap: 14px; padding: 14px; margin: 0 auto; max-width: 1900px; grid-template-columns: minmax(0, 1fr); }
+  #mid { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .searchbar { display: flex; gap: 8px; }
   .searchbar input { flex: 1; }
-  .online { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .online { font-size: 12px; color: var(--muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #chatPanel h2 .badge { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  /* Máy tính bảng / laptop nhỏ: 2 cột, chat nằm dưới hàng chờ */
+  @media (min-width: 900px) {
+    main { height: calc(100vh - 57px); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "add mid" "add chat"; }
+    #addPanel { grid-area: add; display: flex; flex-direction: column; min-height: 0; }
+    #results { flex: 1; min-height: 0; }
+    #mid { grid-area: mid; }
+    #queuePanel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    #queue { flex: 1; min-height: 0; }
+    #chatPanel { grid-area: chat; }
+    .chat .msgs { min-height: 0; }
+  }
+  /* Màn hình rộng: 3 cột, chat chiếm trọn cột phải */
+  @media (min-width: 1280px) {
+    main { grid-template-columns: minmax(0, 1.15fr) minmax(0, .95fr) minmax(360px, 1fr);
+      grid-template-rows: minmax(0, 1fr); grid-template-areas: "add mid chat"; }
+  }
+  /* Điện thoại: 1 cột */
+  @media (max-width: 899px) {
+    #mid { display: contents; }
+    #nowPanel { order: -1; }
+    #results { max-height: 60vh; } #queue { max-height: 50vh; }
+    .chat .msgs { max-height: 55vh; min-height: 260px; }
+  }
 </style>
 </head>
 <body>
@@ -55,7 +67,7 @@
     </div>
   </section>
 
-  <div id="side">
+  <div id="mid">
     <section class="panel" id="nowPanel">
       <h2><span class="eq"><i></i><i></i><i></i></span> Đang phát</h2>
       <div id="now"><div class="empty">Chưa có bài nào. Hãy là người đầu tiên!</div></div>
@@ -65,17 +77,18 @@
       <h2>Hàng chờ <span class="badge" id="qCount">0</span></h2>
       <div class="scroll" id="queue"></div>
     </section>
-
-    <section class="panel chat" id="chatPanel">
-      <h2>Chat chung</h2>
-      <div class="msgs"></div>
-      <form>
-        <input type="text" placeholder="Nhắn gì đó..." maxlength="500" autocomplete="off" enterkeyhint="send">
-        <button class="primary" type="submit">Gửi</button>
-      </form>
-      <div class="online" id="online"></div>
-    </section>
   </div>
+
+  <section class="panel chat" id="chatPanel">
+    <h2>💬 Chat chung <span class="badge" id="onlineCount">0 online</span></h2>
+    <div class="msgs"></div>
+    <div class="typing"></div>
+    <form>
+      <input type="text" placeholder="Nhắn gì đó..." maxlength="500" autocomplete="off" enterkeyhint="send">
+      <button class="primary" type="submit">Gửi</button>
+    </form>
+    <div class="online" id="online"></div>
+  </section>
 </main>
 
 <div class="overlay hidden" id="nameModal">
@@ -104,7 +117,10 @@
   let conn = null;
   let current = null;
 
-  const chat = setupChat($('#chatPanel'), () => name, () => ({ pin }));
+  const chat = setupChat($('#chatPanel'), () => name, () => ({ pin }), {
+    isMine: (m) => !!myOwner && m.owner === myOwner,
+    onTyping: () => conn && conn.send({ type: 'typing' }),
+  });
 
   // ---- Tên + mã phòng ----
   function askName(err = '') {
@@ -144,6 +160,7 @@
       state: render,
       chatHistory: chat.reset,
       chat: chat.add,
+      typing: chat.typing,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),
     });
@@ -178,7 +195,9 @@
       }));
     });
 
-    $('#online').textContent = s.online.length ? `🟢 ${s.online.length} người đang online: ${s.online.join(', ')}` : '';
+    $('#onlineCount').textContent = `🟢 ${s.online.length} online`;
+    $('#online').textContent = s.online.length ? s.online.join(', ') : '';
+    $('#online').title = s.online.join(', ');
     refreshResultButtons();
   }
 

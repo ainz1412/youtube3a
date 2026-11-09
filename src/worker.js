@@ -63,6 +63,7 @@ export class Room extends DurableObject {
     this.chat = [];
     this.searchCache = new Map();
     this.rate = new Map();
+    this.typingAt = new WeakMap();
     ctx.blockConcurrencyWhile(async () => {
       const [s, c] = await Promise.all([ctx.storage.get('state'), ctx.storage.get('chat')]);
       if (s) Object.assign(this.state, s);
@@ -278,7 +279,8 @@ export class Room extends DurableObject {
         const text = String(body.text || '').trim().slice(0, 500);
         if (!name || !text) return json({ error: 'Thiếu tên hoặc nội dung' }, 400);
         if (!host && this.limited('chat:' + ip + ':' + body.cid, 5, 10_000)) return json({ error: 'Bạn chat nhanh quá, chờ chút nhé' }, 429);
-        this.pushChat({ id: crypto.randomUUID(), name, text, t: Date.now(), host });
+        const owner = host ? 'host' : await sha(body.cid || ip);
+        this.pushChat({ id: crypto.randomUUID(), name, text, t: Date.now(), host, owner });
         return json({ ok: true });
       }
 
@@ -346,7 +348,19 @@ export class Room extends DurableObject {
   }
 
   webSocketMessage(ws, message) {
-    if (message === 'ping') { try { ws.send('pong'); } catch (e) {} }
+    if (message === 'ping') { try { ws.send('pong'); } catch (e) {} return; }
+    let m;
+    try { m = JSON.parse(message); } catch (e) { return; }
+    if (m && m.type === 'typing') {
+      // "… đang nhập": chuyển tiếp cho mọi người khác, tối đa 1 lần / 2 giây / người
+      const now = Date.now();
+      if (now - (this.typingAt.get(ws) || 0) < 2000) return;
+      this.typingAt.set(ws, now);
+      let a = null;
+      try { a = ws.deserializeAttachment(); } catch (e) {}
+      const name = a?.isHost ? 'DJ' : a?.name;
+      if (name) this.broadcast('typing', { name }, ws);
+    }
   }
   webSocketClose(ws) {
     try { ws.close(1000, 'bye'); } catch (e) {}
