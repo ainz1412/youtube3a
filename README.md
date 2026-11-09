@@ -2,8 +2,10 @@
 
 Website cố định: mọi người vào chọn bài YouTube, chat chung. Máy tính của chủ phòng mở trang `/host` để phát nhạc ra loa bằng tài khoản YouTube Premium.
 
-- `https://youtube3a.<tên-bạn>.workers.dev/` dành cho **khách**: nhập tên (và mã phòng nếu có), tìm bài, dán link, xếp hàng chờ, chat.
-- `https://youtube3a.<tên-bạn>.workers.dev/host` dành cho **máy phát**: cần mật khẩu. Trang này phát nhạc, điều khiển hàng chờ và hiện mã QR.
+Địa chỉ chính: **https://music.khai99.id.vn** (dự phòng: https://youtube3a.khaimain251099.workers.dev)
+
+- `https://music.khai99.id.vn/` dành cho **khách**: nhập tên (và mã phòng nếu có), tìm bài, dán link, xếp hàng chờ, chat.
+- `https://music.khai99.id.vn/host` dành cho **máy phát**: cần mật khẩu. Trang này phát nhạc, điều khiển hàng chờ và hiện mã QR.
 
 Toàn bộ chạy trên gói **miễn phí** của Cloudflare Workers và Durable Objects.
 
@@ -26,7 +28,8 @@ Toàn bộ chạy trên gói **miễn phí** của Cloudflare Workers và Durabl
    | `ROOM_PIN` | *(Không bắt buộc)* Mã phòng khách phải nhập, ví dụ `2468`. Để trống thì ai có link cũng vào được |
 
    Bấm **Deploy** để lưu.
-7. Mở `https://youtube3a.<tên-bạn>.workers.dev/host` trên máy tính, nhập mật khẩu rồi bấm **▶ Bắt đầu phát**.
+7. *(Tuỳ chọn)* Gắn tên miền riêng: Worker → **Domains** → **Add Domain** → chọn tên miền → nhập tên miền con (ví dụ `music`).
+8. Mở `https://music.khai99.id.vn/host` trên máy tính, nhập mật khẩu rồi bấm **▶ Bắt đầu phát**.
 
 Từ đó về sau, mỗi lần có commit mới lên nhánh `main`, Cloudflare tự deploy lại.
 
