@@ -202,7 +202,7 @@ export class Room extends DurableObject {
 
       if (request.method === 'GET' && p === '/api/search') {
         if (!this.pinOk(url.searchParams.get('pin'))) return json({ error: 'Sai mã phòng' }, 403);
-        if (!c.apiKey) return json({ error: 'Chủ phòng chưa cài YOUTUBE_API_KEY' }, 500);
+        if (!c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
         const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
         if (!q) return json({ error: 'Thiếu từ khóa' }, 400);
         const id = extractVideoId(q);
@@ -236,7 +236,7 @@ export class Room extends DurableObject {
         if (!cid) return json({ error: 'Thiếu mã thiết bị' }, 400);
         const videoId = extractVideoId(body.videoId || body.url);
         if (!videoId) return json({ error: 'Link YouTube không hợp lệ' }, 400);
-        if (!c.apiKey) return json({ error: 'Chủ phòng chưa cài YOUTUBE_API_KEY' }, 500);
+        if (!c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
         if (this.limited('add:' + ip, 8, 60_000)) return json({ error: 'Bạn thêm nhanh quá, chờ chút nhé' }, 429);
 
         const owner = await sha(cid);
@@ -275,7 +275,7 @@ export class Room extends DurableObject {
       if (p === '/api/chat') {
         if (!this.pinOk(body.pin, body.pw)) return json({ error: 'Sai mã phòng' }, 403);
         const host = this.isHost(body.pw);
-        const name = host ? cleanName(body.name) || 'DJ' : cleanName(body.name);
+        const name = host ? 'Admin' : cleanName(body.name);
         const text = String(body.text || '').trim().slice(0, 500);
         if (!name || !text) return json({ error: 'Thiếu tên hoặc nội dung' }, 400);
         if (!host && this.limited('chat:' + ip + ':' + body.cid, 5, 10_000)) return json({ error: 'Bạn chat nhanh quá, chờ chút nhé' }, 429);
@@ -287,7 +287,7 @@ export class Room extends DurableObject {
       if (p.startsWith('/api/host/')) {
         if (!this.isHost(body.pw)) {
           this.limited('pwfail:' + ip, 8, 10 * 60_000);
-          return json({ error: 'Chỉ chủ phòng mới điều khiển được' }, 403);
+          return json({ error: 'Chỉ Admin mới điều khiển được' }, 403);
         }
         const s = this.state;
         switch (p.slice(10)) {
@@ -358,7 +358,7 @@ export class Room extends DurableObject {
       this.typingAt.set(ws, now);
       let a = null;
       try { a = ws.deserializeAttachment(); } catch (e) {}
-      const name = a?.isHost ? 'DJ' : a?.name;
+      const name = a?.isHost ? 'Admin' : a?.name;
       if (name) this.broadcast('typing', { name }, ws);
     }
   }

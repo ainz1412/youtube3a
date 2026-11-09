@@ -1,11 +1,11 @@
 # 🎶 YT Jukebox – Phòng nghe nhạc chung (Cloudflare)
 
-Website cố định: mọi người vào chọn bài YouTube, chat chung. Máy tính của chủ phòng mở trang `/host` để phát nhạc ra loa bằng tài khoản YouTube Premium.
+Website cố định: mọi người vào chọn bài YouTube, chat chung. Máy tính của Admin mở trang `/admin` để phát nhạc ra loa bằng tài khoản YouTube Premium.
 
 Địa chỉ chính: **https://music.khai99.id.vn** (dự phòng: https://youtube3a.khaimain251099.workers.dev)
 
 - `https://music.khai99.id.vn/` dành cho **khách**: nhập tên (và mã phòng nếu có), tìm bài, dán link, xếp hàng chờ, chat.
-- `https://music.khai99.id.vn/host` dành cho **máy phát**: cần mật khẩu. Trang này phát nhạc, điều khiển hàng chờ và hiện mã QR.
+- `https://music.khai99.id.vn/admin` dành cho **Admin** (máy phát nhạc): cần mật khẩu. Trang này phát nhạc, điều khiển hàng chờ và hiện mã QR. Tin nhắn của Admin có màu vàng.
 
 Toàn bộ chạy trên gói **miễn phí** của Cloudflare Workers và Durable Objects.
 
@@ -24,19 +24,19 @@ Toàn bộ chạy trên gói **miễn phí** của Cloudflare Workers và Durabl
    | Tên | Giá trị |
    |---|---|
    | `YOUTUBE_API_KEY` | Key YouTube Data API v3 |
-   | `HOST_PASSWORD` | Mật khẩu để mở trang `/host` (tự đặt) |
+   | `HOST_PASSWORD` | Mật khẩu để mở trang `/admin` (tự đặt) |
    | `ROOM_PIN` | *(Không bắt buộc)* Mã phòng khách phải nhập, ví dụ `2468`. Để trống thì ai có link cũng vào được |
 
    Bấm **Deploy** để lưu.
 7. *(Tuỳ chọn)* Gắn tên miền riêng: Worker → **Domains** → **Add Domain** → chọn tên miền → nhập tên miền con (ví dụ `music`).
-8. Mở `https://music.khai99.id.vn/host` trên máy tính, nhập mật khẩu rồi bấm **▶ Bắt đầu phát**.
+8. Mở `https://music.khai99.id.vn/admin` trên máy tính, nhập mật khẩu rồi bấm **▶ Bắt đầu phát**.
 
 Từ đó về sau, mỗi lần có commit mới lên nhánh `main`, Cloudflare tự deploy lại.
 
 ## Dùng hằng ngày
-1. Máy tính: mở Chrome/Edge **đã đăng nhập YouTube Premium** → vào `/host` → bấm **Bắt đầu phát**. Kết nối loa Bluetooth như bình thường.
+1. Máy tính: mở Chrome/Edge **đã đăng nhập YouTube Premium** → vào `/admin` → bấm **Bắt đầu phát**. Kết nối loa Bluetooth như bình thường.
 2. Mọi người quét mã QR trên màn hình, dùng Wi-Fi nào hay 4G đều được. Nếu có mã phòng, mã QR đã kèm sẵn nên không cần gõ.
-3. Để tab `/host` mở suốt buổi. Có thể thu nhỏ cửa sổ.
+3. Để tab `/admin` mở suốt buổi. Có thể thu nhỏ cửa sổ.
 
 Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở lại vẫn còn.
 
@@ -57,7 +57,8 @@ Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở 
 ```
 src/worker.js        Worker + Durable Object "Room" (hàng chờ, chat, WebSocket, gọi YouTube API)
 public/index.html    Trang khách
-public/host.html     Trang máy phát (YouTube IFrame Player)
+public/admin.html    Trang Admin / máy phát (YouTube IFrame Player)
+public/host.html     Chuyển hướng /host cũ sang /admin
 public/static/       CSS + JS dùng chung
 wrangler.jsonc       Cấu hình Cloudflare
 ```

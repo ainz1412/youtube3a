@@ -1,4 +1,4 @@
-// Hàm dùng chung cho trang khách và trang máy phát
+// Hàm dùng chung cho trang khách và trang Admin
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -94,7 +94,9 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     const grouped = prev && !prev.system && (prev.owner || prev.name) === key && m.t - prev.t < 3 * 60 * 1000;
     prev = m;
     return el('div', { class: 'msg' + (mine ? ' mine' : '') + (m.host ? ' host' : '') + (grouped ? '' : ' gap') },
-      grouped ? null : el('div', { class: 'who' }, m.name + (m.host ? ' (DJ)' : '')),
+      grouped ? null : (m.host
+        ? el('div', { class: 'who' }, '👑 Admin')
+        : el('div', { class: 'who' }, m.name)),
       el('div', { class: 'bubble' }, m.text),
       el('time', {}, fmtTime(m.t)));
   }
