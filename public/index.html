@@ -126,6 +126,7 @@
   let current = null;
 
   const chat = setupChat($('#chatPanel'), () => name, () => ({ pin }), {
+    myOwner: () => myOwner,
     isMine: (m) => !!myOwner && m.owner === myOwner,
     onTyping: () => conn && conn.send({ type: 'typing' }),
   });
@@ -169,6 +170,7 @@
       chatHistory: chat.reset,
       chat: chat.add,
       typing: chat.typing,
+      react: chat.react,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),
     });

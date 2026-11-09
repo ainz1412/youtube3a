@@ -69,6 +69,7 @@ function ptInfo(now = Date.now()) {
 }
 const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. Bạn vẫn thêm được bài bằng cách dán link YouTube.';
 const VIDEO_UNITS_PER_DAY = 10000;
+const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 
 // ---------- Phòng nhạc ----------
 export class Room extends DurableObject {
@@ -384,7 +385,37 @@ export class Room extends DurableObject {
         if (!name || !text) return json({ error: 'Thiếu tên hoặc nội dung' }, 400);
         if (!host && this.limited('chat:' + ip + ':' + body.cid, 5, 10_000)) return json({ error: 'Bạn chat nhanh quá, chờ chút nhé' }, 429);
         const owner = host ? 'host' : await sha(body.cid || ip);
-        this.pushChat({ id: crypto.randomUUID(), name, text, t: Date.now(), host, owner });
+        // Trả lời 1 tin nhắn: lưu kèm trích dẫn ngắn của tin gốc
+        let reply;
+        if (body.replyTo) {
+          const o = this.chat.find((m) => m.id === body.replyTo && !m.system);
+          if (o) reply = { id: o.id, name: o.host ? 'Admin' : o.name, text: String(o.text).slice(0, 140), host: !!o.host };
+        }
+        this.pushChat({ id: crypto.randomUUID(), name, text, t: Date.now(), host, owner, ...(reply ? { reply } : {}) });
+        return json({ ok: true });
+      }
+
+      if (p === '/api/react') {
+        if (!this.pinOk(body.pin, body.pw)) return json({ error: 'Sai mã phòng' }, 403);
+        const host = this.isHost(body.pw);
+        const emoji = String(body.emoji || '');
+        if (!REACTIONS.includes(emoji)) return json({ error: 'Cảm xúc không hợp lệ' }, 400);
+        if (!host && this.limited('react:' + ip, 30, 10_000)) return json({ error: 'Bạn thả cảm xúc nhanh quá, chờ chút nhé' }, 429);
+        const msg = this.chat.find((m) => m.id === body.id && !m.system);
+        if (!msg) return json({ error: 'Tin nhắn này đã cũ, không thả cảm xúc được nữa' }, 404);
+        const owner = host ? 'host' : await sha(body.cid || ip);
+        const who = host ? 'Admin' : cleanName(body.name) || 'Ai đó';
+        // Mỗi người 1 cảm xúc / tin: thả cái mới thì thay cái cũ, thả lại cái đang có thì gỡ
+        const r = msg.reactions || {};
+        let had = null;
+        for (const e of Object.keys(r)) {
+          const i = r[e].findIndex((x) => x.owner === owner);
+          if (i >= 0) { had = e; r[e].splice(i, 1); if (!r[e].length) delete r[e]; }
+        }
+        if (had !== emoji) { (r[emoji] = r[emoji] || []).push({ owner, name: who }); if (r[emoji].length > 100) r[emoji].shift(); }
+        if (Object.keys(r).length) msg.reactions = r; else delete msg.reactions;
+        this.ctx.storage.put('chat', this.chat);
+        this.broadcast('react', { id: msg.id, reactions: msg.reactions || {} });
         return json({ ok: true });
       }
 

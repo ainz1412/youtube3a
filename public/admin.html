@@ -210,6 +210,7 @@
   const hapi = (path, body = {}) => api(path, { ...body, pw }).catch((e) => { toast(e.message, true); });
   let hostConn = null;
   const chat = setupChat($('#chatPanel'), () => hostName, () => ({ pw }), {
+    myOwner: () => 'host',
     isMine: (m) => !!m.host,
     onTyping: () => hostConn && hostConn.send({ type: 'typing' }),
   });
@@ -243,7 +244,7 @@
     loadQuota();
     setInterval(loadQuota, 30000);
     hostConn = connectWS(() => ({ role: 'host', pw, device: deviceId }), {
-      state: render, chatHistory: chat.reset, chat: chat.add, typing: chat.typing,
+      state: render, chatHistory: chat.reset, chat: chat.add, typing: chat.typing, react: chat.react,
       speaker: onSpeaker, player: onPlayer, cmd: onCmd,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),

@@ -116,21 +116,89 @@ function applyNowTint(panel, url) {
 }
 
 // ---------- Chat thời gian thực ----------
-// opts.isMine(m)  -> tin nhắn của chính mình (hiện bên phải)
-// opts.onTyping() -> gọi khi mình đang gõ (đã giới hạn tần suất)
+// opts.isMine(m)   -> tin nhắn của chính mình (hiện bên phải)
+// opts.myOwner()   -> mã người dùng hiện tại (để tô cảm xúc mình đã thả)
+// opts.onTyping()  -> gọi khi mình đang gõ (đã giới hạn tần suất)
+const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
 function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
   const msgs = $('.msgs', container);
   const form = $('form', container);
   const input = $('input', form);
   const typingEl = $('.typing', container);
   const isMine = opts.isMine || (() => false);
+  const myOwner = opts.myOwner || (() => '');
   let prev = null;          // tin trước đó (để gộp tin liên tiếp của cùng 1 người)
   let lastEl = null;
   let unread = 0, newBtn = null;
   const typers = new Map(); // name -> hết hạn lúc
+  const nodes = new Map();  // id tin nhắn -> phần tử
+  const byId = new Map();   // id tin nhắn -> dữ liệu
+  let replyTo = null;       // tin đang được trả lời
 
   const nearBottom = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
   const toBottom = () => { msgs.scrollTop = msgs.scrollHeight; };
+  const displayName = (m) => (m.host ? 'Admin' : m.name);
+
+  // ----- cảm xúc -----
+  function drawReactions(box, m) {
+    box.innerHTML = '';
+    const r = m.reactions || {};
+    const me = myOwner();
+    for (const e of REACTIONS) {
+      const list = r[e];
+      if (!list || !list.length) continue;
+      const mineR = list.some((x) => x.owner === me);
+      box.append(el('button', {
+        type: 'button', class: mineR ? 'mine' : '',
+        title: list.map((x) => x.name).join(', ') + ' đã thả ' + e,
+        onclick: (ev) => { ev.stopPropagation(); react(m.id, e); },
+      }, e, list.length > 1 ? ' ' + list.length : ''));
+    }
+    box.classList.toggle('hidden', !box.children.length);
+  }
+  async function react(id, emoji) {
+    closePicker();
+    try { await api('/api/react', { id, emoji, name: getName(), cid: getClientId(), ...getExtra() }); }
+    catch (err) { toast(err.message, true); }
+  }
+  let picker = null;
+  function closePicker() { if (picker) { picker.remove(); picker = null; } }
+  function openPicker(anchor, m) {
+    closePicker();
+    picker = el('div', { class: 'react-picker', role: 'menu' },
+      REACTIONS.map((e) => el('button', { type: 'button', title: 'Thả ' + e, onclick: (ev) => { ev.stopPropagation(); react(m.id, e); } }, e)));
+    document.body.append(picker);
+    const r = anchor.getBoundingClientRect(), pw = picker.offsetWidth, ph = picker.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2));
+    const top = r.top - ph - 8 < 8 ? r.bottom + 8 : r.top - ph - 8;
+    picker.style.left = left + 'px'; picker.style.top = top + 'px';
+  }
+  document.addEventListener('click', (e) => { if (picker && !picker.contains(e.target)) closePicker(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePicker(); cancelReply(); } });
+  msgs.addEventListener('scroll', closePicker);
+
+  // ----- trả lời -----
+  let replyBar = null;
+  function startReply(m) {
+    replyTo = { id: m.id, name: displayName(m), text: m.text };
+    if (!replyBar) {
+      replyBar = el('div', { class: 'replying' });
+      form.parentNode.insertBefore(replyBar, form);
+    }
+    replyBar.innerHTML = '';
+    replyBar.append(
+      el('span', { class: 'rtext' }, 'Đang trả lời ', el('b', {}, replyTo.name), ': ', replyTo.text),
+      el('button', { type: 'button', class: 'icon', title: 'Hủy trả lời', onclick: cancelReply }, '✕'));
+    input.focus();
+  }
+  function cancelReply() { replyTo = null; if (replyBar) { replyBar.remove(); replyBar = null; } }
+  function jumpTo(id) {
+    const n = nodes.get(id);
+    if (!n) return toast('Tin gốc đã cũ, không còn trong khung chat');
+    n.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
+  }
 
   function render(m) {
     if (m.system) { prev = null; return el('div', { class: 'msg sys' }, m.text); }
@@ -138,22 +206,38 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     const key = m.owner || m.name;
     const grouped = prev && !prev.system && (prev.owner || prev.name) === key && m.t - prev.t < 3 * 60 * 1000;
     prev = m;
-    return el('div', { class: 'msg' + (mine ? ' mine' : '') + (m.host ? ' host' : '') + (grouped ? '' : ' gap') },
-      grouped ? null : (m.host
-        ? el('div', { class: 'who' }, '👑 Admin')
-        : el('div', { class: 'who' }, m.name)),
-      el('div', { class: 'bubble' }, m.text),
+    const reactBox = el('div', { class: 'reactions hidden' });
+    const node = el('div', { class: 'msg' + (mine ? ' mine' : '') + (m.host ? ' host' : '') + (grouped && !m.reply ? '' : ' gap'), 'data-id': m.id },
+      grouped && !m.reply ? null : (m.host ? el('div', { class: 'who' }, '👑 Admin') : el('div', { class: 'who' }, m.name)),
+      m.reply ? el('div', { class: 'reply-quote' + (m.reply.host ? ' host-q' : ''), title: 'Xem tin gốc', onclick: () => jumpTo(m.reply.id) },
+        '↩ ', el('b', {}, m.reply.name), ': ', m.reply.text) : null,
+      el('div', { class: 'brow' },
+        el('div', { class: 'bubble' }, m.text),
+        el('div', { class: 'msg-actions' },
+          el('button', { type: 'button', title: 'Thả cảm xúc', onclick: (ev) => { ev.stopPropagation(); openPicker(ev.currentTarget, m); } }, '☺'),
+          el('button', { type: 'button', title: 'Trả lời', onclick: (ev) => { ev.stopPropagation(); startReply(m); } }, '↩'))),
+      reactBox,
       el('time', {}, fmtTime(m.t)));
+    // Điện thoại không có rê chuột: chạm vào tin để hiện nút
+    node.querySelector('.bubble').addEventListener('click', () => {
+      const on = !node.classList.contains('show-actions');
+      msgs.querySelectorAll('.msg.show-actions').forEach((x) => x.classList.remove('show-actions'));
+      node.classList.toggle('show-actions', on);
+    });
+    drawReactions(reactBox, m);
+    return node;
   }
 
   function add(m, { initial = false } = {}) {
     const stick = initial || nearBottom() || isMine(m);
     if (lastEl) lastEl.classList.remove('last');
-    if (prev && !m.system && (prev.owner || prev.name) === (m.owner || m.name) && lastEl) lastEl.querySelector('time')?.remove();
+    if (prev && !m.system && !m.reply && (prev.owner || prev.name) === (m.owner || m.name) && lastEl) lastEl.querySelector('time')?.remove();
     const node = render(m);
     if (newBtn) msgs.insertBefore(node, newBtn); else msgs.append(node);
-    if (!m.system) { node.classList.add('last'); lastEl = node; }
-    while (msgs.children.length > 200) msgs.firstChild.remove();
+    if (!m.system) { node.classList.add('last'); lastEl = node; nodes.set(m.id, node); byId.set(m.id, m); }
+    while (msgs.children.length > 200) {
+      const f = msgs.firstChild; if (f.dataset && f.dataset.id) { nodes.delete(f.dataset.id); byId.delete(f.dataset.id); } f.remove();
+    }
     if (m.name) { typers.delete(m.name); drawTyping(); }
     if (stick) toBottom();
     else if (!initial) {
@@ -189,17 +273,19 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
+    const reply = replyTo;
     input.value = '';
+    cancelReply();
     lastTypingSent = 0;
     input.focus();
-    try { await api('/api/chat', { name: getName(), text, cid: getClientId(), ...getExtra() }); }
-    catch (err) { toast(err.message, true); input.value = text; }
+    try { await api('/api/chat', { name: getName(), text, cid: getClientId(), replyTo: reply ? reply.id : undefined, ...getExtra() }); }
+    catch (err) { toast(err.message, true); input.value = text; if (reply) startReply(byId.get(reply.id) || reply); }
   });
 
   return {
     add: (m) => add(m),
     reset(list) {
-      msgs.innerHTML = ''; prev = null; lastEl = null; newBtn = null; unread = 0;
+      msgs.innerHTML = ''; prev = null; lastEl = null; newBtn = null; unread = 0; nodes.clear(); byId.clear();
       list.forEach((m) => add(m, { initial: true }));
       toBottom();
     },
@@ -207,6 +293,14 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
       if (!name) return;
       typers.set(name, Date.now() + 4000);
       drawTyping();
+    },
+    react({ id, reactions }) {
+      const m = byId.get(id), n = nodes.get(id);
+      if (!m || !n) return;
+      m.reactions = reactions;
+      const stick = nearBottom();
+      drawReactions(n.querySelector('.reactions'), m);
+      if (stick) toBottom();
     },
   };
 }
