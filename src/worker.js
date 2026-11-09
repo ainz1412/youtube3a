@@ -1,4 +1,4 @@
-// YT Jukebox – bản chạy trên Cloudflare Workers + Durable Objects
+// Chillwith3A – bản chạy trên Cloudflare Workers + Durable Objects
 // - Trang tĩnh trong /public do Cloudflare phục vụ trực tiếp
 // - Mọi /api/* đi vào 1 Durable Object "Room" (giữ hàng chờ, chat, WebSocket)
 

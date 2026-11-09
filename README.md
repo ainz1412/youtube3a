@@ -1,4 +1,4 @@
-# 🎶 YT Jukebox – Phòng nghe nhạc chung (Cloudflare)
+# 🎶 Chillwith3A – Phòng nghe nhạc chung (Cloudflare)
 
 Website cố định: mọi người vào chọn bài YouTube, chat chung. Máy tính của Admin mở trang `/admin` để phát nhạc ra loa bằng tài khoản YouTube Premium.
 
