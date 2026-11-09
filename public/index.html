@@ -15,6 +15,9 @@
   #mid { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .searchbar { display: flex; gap: 8px; }
   .searchbar input { flex: 1; }
+  .squota { font-size: 12.5px; color: var(--subtle); margin: 8px 4px 0; min-height: 18px; }
+  .squota.out { color: var(--admin); }
+  .squota button { margin-left: 6px; padding: 3px 12px; font-size: 12.5px; }
   .online { font-size: 12px; color: var(--subtle); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #chatPanel h2 .badge { margin-left: auto; font-weight: 500; color: var(--muted); }
   /* Máy tính bảng / laptop nhỏ: 2 cột, chat nằm dưới hàng chờ */
@@ -61,6 +64,7 @@
       <input type="text" id="searchInput" placeholder="Bạn muốn nghe gì?" autocomplete="off" enterkeyhint="search">
       <button class="primary" type="submit">Tìm</button>
     </form>
+    <div class="squota" id="squota"></div>
     <form class="searchbar hidden" id="linkForm">
       <input type="text" id="linkInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
       <button class="primary" type="submit">Thêm</button>
@@ -198,6 +202,7 @@
       }));
     });
 
+    drawSearchQuota(s.search);
     $('#onlineCount').textContent = `${s.online.length} người online`;
     $('#online').textContent = s.online.length ? s.online.join(', ') : '';
     $('#online').title = s.online.join(', ');
@@ -216,13 +221,39 @@
     $('#searchForm').classList.toggle('hidden', !isSearch);
     $('#linkForm').classList.toggle('hidden', isSearch);
     (isSearch ? $('#searchInput') : $('#linkInput')).focus();
+    drawSearchQuota(searchInfo);
   }));
+
+  // ---- Lượt tìm kiếm còn lại ----
+  let searchInfo = null;
+  function drawSearchQuota(si) {
+    searchInfo = si || null;
+    const box = $('#squota');
+    box.innerHTML = '';
+    box.classList.remove('out');
+    if (!si) return;
+    const searchTab = !$('#searchForm').classList.contains('hidden');
+    if (si.available) {
+      if (si.limit && searchTab) box.textContent = `Còn ${si.left} lượt tìm hôm nay cho cả phòng`;
+      $('#searchForm button').textContent = 'Tìm';
+    } else {
+      box.classList.add('out');
+      box.append(`Hết lượt tìm hôm nay (có lại lúc ${fmtTime(si.resetAt)}). Hãy tìm trên YouTube rồi dán link vào đây.`);
+      $('#searchForm button').textContent = 'Mở YouTube';
+    }
+  }
+  function openYouTubeSearch(q) {
+    window.open('https://www.youtube.com/results?search_query=' + encodeURIComponent(q || ''), '_blank', 'noopener');
+    document.querySelector('.tabs button[data-tab="link"]').click();
+    toast('Copy link bài hát trên YouTube rồi dán vào ô bên dưới');
+  }
 
   // ---- Tìm kiếm ----
   let lastResults = [];
   $('#searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = $('#searchInput').value.trim();
+    if (searchInfo && !searchInfo.available) return openYouTubeSearch(q);
     if (!q) return;
     $('#searchInput').blur();
     const box = $('#results');
@@ -233,7 +264,8 @@
       renderResults();
     } catch (err) {
       if (handleAuthError(err)) return;
-      box.innerHTML = ''; box.append(el('div', { class: 'empty' }, '❌ ' + err.message));
+      box.innerHTML = ''; box.append(el('div', { class: 'empty' }, err.message,
+        err.status === 429 && /hết lượt/i.test(err.message) ? el('div', { style: 'margin-top:12px' }, el('button', { class: 'ghost', onclick: () => openYouTubeSearch(q) }, 'Tìm trên YouTube')) : null));
     }
   });
 

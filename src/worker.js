@@ -52,8 +52,23 @@ async function sha(s) {
   return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Hạn mức YouTube API reset lúc 0h giờ Thái Bình Dương
-const quotaDay = () => new Date(Date.now() - 8 * 3600e3).toISOString().slice(0, 10);
+// Hạn mức YouTube API reset lúc 0h giờ Thái Bình Dương (America/Los_Angeles)
+function ptInfo(now = Date.now()) {
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(new Date(now)).map((x) => [x.type, x.value]));
+    const secs = (+parts.hour % 24) * 3600 + +parts.minute * 60 + +parts.second;
+    return { day: `${parts.year}-${parts.month}-${parts.day}`, resetAt: now + (86400 - secs) * 1000 };
+  } catch (e) {
+    const d = new Date(now - 8 * 3600e3);
+    const secs = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+    return { day: d.toISOString().slice(0, 10), resetAt: now + (86400 - secs) * 1000 };
+  }
+}
+const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. Bạn vẫn thêm được bài bằng cách dán link YouTube.';
+const VIDEO_UNITS_PER_DAY = 10000;
 
 // ---------- Phòng nhạc ----------
 export class Room extends DurableObject {
@@ -64,10 +79,21 @@ export class Room extends DurableObject {
     this.searchCache = new Map();
     this.rate = new Map();
     this.typingAt = new WeakMap();
+    this.usage = null;        // { day, keys: { [keyId]: { search, videos, exhausted, lastError, lastOk } } }
+    this.usageHist = [];      // [{ day, search, videos }] các ngày trước
+    this.keyOverride = '';    // key do Admin đặt trên trang /admin (ưu tiên hơn Cloudflare Secret)
+    this.cfgOverride = {};
+    this.kid = 'none';
     ctx.blockConcurrencyWhile(async () => {
-      const [s, c] = await Promise.all([ctx.storage.get('state'), ctx.storage.get('chat')]);
+      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride']);
+      const s = m.get('state'), c = m.get('chat');
       if (s) Object.assign(this.state, s);
       if (Array.isArray(c)) this.chat = c;
+      this.usage = m.get('usage') || null;
+      this.usageHist = m.get('usageHist') || [];
+      this.keyOverride = m.get('apiKeyOverride') || '';
+      this.cfgOverride = m.get('cfgOverride') || {};
+      await this.refreshKeyId();
     });
     // Trả lời "ping" mà không cần đánh thức Durable Object (tiết kiệm hạn mức miễn phí)
     try { ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong')); } catch (e) {}
@@ -77,12 +103,12 @@ export class Room extends DurableObject {
     const e = this.env;
     const int = (v, d) => { const n = parseInt(v ?? d, 10); return Number.isFinite(n) && n > 0 ? n : 0; };
     return {
-      apiKey: e.YOUTUBE_API_KEY || '',
+      apiKey: this.keyOverride || e.YOUTUBE_API_KEY || '',
       hostPw: e.HOST_PASSWORD || '',
       pin: String(e.ROOM_PIN || '').trim(),
       maxSongs: int(e.MAX_SONGS_PER_USER, '3'),
       maxDur: int(e.MAX_DURATION_MIN, '15'),
-      maxSearch: int(e.MAX_SEARCHES_PER_DAY, '90'),
+      maxSearch: Number.isFinite(this.cfgOverride.maxSearch) ? this.cfgOverride.maxSearch : int(e.MAX_SEARCHES_PER_DAY, '100'),
     };
   }
 
@@ -117,7 +143,79 @@ export class Room extends DurableObject {
       paused: this.state.paused,
       online,
       limits: { maxSongsPerUser: c.maxSongs, maxDurationMin: c.maxDur },
+      search: this.searchInfo(),
     };
+  }
+
+  // ----- Theo dõi hạn mức YouTube API -----
+  async refreshKeyId() { this.kid = this.cfg.apiKey ? await sha('key:' + this.cfg.apiKey) : 'none'; }
+  curUsage() {
+    const { day } = ptInfo();
+    if (!this.usage || this.usage.day !== day) {
+      if (this.usage) {
+        const tot = Object.values(this.usage.keys || {}).reduce((a, k) => ({ search: a.search + (k.search || 0), videos: a.videos + (k.videos || 0) }), { search: 0, videos: 0 });
+        this.usageHist = [{ day: this.usage.day, ...tot }, ...this.usageHist.filter((h) => h.day !== this.usage.day)].slice(0, 14);
+        this.ctx.storage.put('usageHist', this.usageHist);
+      }
+      this.usage = { day, keys: {} };
+    }
+    if (!this.usage.keys[this.kid]) this.usage.keys[this.kid] = { search: 0, videos: 0, exhausted: {}, lastError: null, lastOk: null };
+    return this.usage.keys[this.kid];
+  }
+  saveUsage() { this.ctx.storage.put('usage', this.usage); }
+  searchInfo() {
+    const { day, resetAt } = ptInfo();
+    const k = (this.usage && this.usage.day === day && this.usage.keys[this.kid]) || { search: 0, exhausted: {} };
+    const limit = this.cfg.maxSearch, used = k.search || 0;
+    const exhausted = !!(k.exhausted && k.exhausted.search) || (limit > 0 && used >= limit);
+    return { used, limit, left: limit ? Math.max(0, limit - used) : null, available: !!this.cfg.apiKey && !exhausted, resetAt };
+  }
+  quotaInfo() {
+    const { day, resetAt } = ptInfo();
+    const k = (this.usage && this.usage.day === day && this.usage.keys[this.kid]) || { search: 0, videos: 0, exhausted: {}, lastError: null, lastOk: null };
+    const key = this.cfg.apiKey;
+    return {
+      day, resetAt,
+      key: key ? key.slice(0, 6) + '…' + key.slice(-4) : '',
+      keySource: this.keyOverride ? 'admin' : (this.env.YOUTUBE_API_KEY ? 'cloudflare' : 'none'),
+      hasEnvKey: !!this.env.YOUTUBE_API_KEY,
+      search: { used: k.search || 0, limit: this.cfg.maxSearch, exhausted: !!(k.exhausted && k.exhausted.search) },
+      videos: { used: k.videos || 0, limit: VIDEO_UNITS_PER_DAY, exhausted: !!(k.exhausted && k.exhausted.videos) },
+      lastError: k.lastError || null,
+      lastOk: k.lastOk || null,
+      cachedSearches: this.searchCache.size,
+      history: [{ day, search: k.search || 0, videos: k.videos || 0 }, ...this.usageHist].slice(0, 7),
+    };
+  }
+  // Mọi lần gọi YouTube đều đi qua đây: đếm lượt + nhận biết hết hạn mức / key sai
+  async ytCall(kind, url) {
+    const u = this.curUsage();
+    let j;
+    try { j = await (await fetch(url)).json(); }
+    catch (e) {
+      u.lastError = { kind, reason: 'network', message: String((e && e.message) || e), at: Date.now() };
+      this.saveUsage();
+      throw new Error('Không kết nối được tới YouTube, thử lại sau.');
+    }
+    if (j.error) {
+      const reason = (j.error.errors && j.error.errors[0] && j.error.errors[0].reason) || j.error.status || 'error';
+      u.lastError = { kind, reason, message: j.error.message, at: Date.now() };
+      let msg = 'YouTube: ' + j.error.message, status = 502;
+      if (/quotaExceeded|dailyLimitExceeded/i.test(reason)) {
+        u.exhausted[kind] = true; status = 429;
+        msg = kind === 'search' ? SEARCH_EXHAUSTED_MSG : 'YouTube API đã hết hạn mức hôm nay. Thử lại sau khi reset.';
+      } else if (/keyInvalid|keyExpired|API_KEY|forbidden|accessNotConfigured/i.test(reason) || /API key/i.test(j.error.message || '')) {
+        msg = 'API key YouTube đang lỗi. Admin cần kiểm tra lại key trên trang /admin.';
+      }
+      this.saveUsage();
+      this.broadcast('state', this.publicState());
+      const err = new Error(msg); err.status = status; err.reason = reason; throw err;
+    }
+    u[kind] = (u[kind] || 0) + 1;
+    u.lastOk = Date.now();
+    this.saveUsage();
+    if (kind === 'search') this.broadcast('state', this.publicState());
+    return j;
   }
   send(ws, type, data) { try { ws.send(JSON.stringify({ type, data })); } catch (e) {} }
   broadcast(type, data, exclude) {
@@ -145,8 +243,7 @@ export class Room extends DurableObject {
   // ----- YouTube Data API v3 -----
   async ytVideos(ids) {
     const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${ids.join(',')}&key=${this.cfg.apiKey}`;
-    const j = await (await fetch(url)).json();
-    if (j.error) throw new Error('YouTube: ' + j.error.message);
+    const j = await this.ytCall('videos', url);
     return (j.items || []).map((v) => ({
       videoId: v.id,
       title: decodeEntities(v.snippet.title),
@@ -161,24 +258,13 @@ export class Room extends DurableObject {
   async ytSearch(q) {
     const key = q.toLowerCase();
     const cached = this.searchCache.get(key);
-    if (cached && Date.now() - cached.t < 60 * 60 * 1000) return cached.items;
+    if (cached && Date.now() - cached.t < 6 * 60 * 60 * 1000) return cached.items; // lưu đệm 6 giờ: tìm lại không tốn lượt
 
     const c = this.cfg;
-    if (c.maxSearch) {
-      const day = quotaDay();
-      let quota = (await this.ctx.storage.get('quota')) || { day, count: 0 };
-      if (quota.day !== day) quota = { day, count: 0 };
-      if (quota.count >= c.maxSearch) {
-        const e = new Error('Hôm nay đã hết lượt tìm kiếm miễn phí của YouTube. Hãy dán link YouTube để thêm bài nhé!');
-        e.status = 429; throw e;
-      }
-      quota.count++;
-      await this.ctx.storage.put('quota', quota);
-    }
+    if (!this.searchInfo().available) { const e = new Error(SEARCH_EXHAUSTED_MSG); e.status = 429; throw e; }
 
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=12&q=${encodeURIComponent(q)}&key=${c.apiKey}`;
-    const j = await (await fetch(url)).json();
-    if (j.error) throw new Error('YouTube: ' + j.error.message);
+    const j = await this.ytCall('search', url);
     const ids = (j.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
     const items = ids.length ? (await this.ytVideos(ids)).filter((v) => !v.live) : [];
     this.searchCache.set(key, { t: Date.now(), items });
@@ -324,6 +410,45 @@ export class Room extends DurableObject {
             break;
           }
           case 'clear': s.queue = []; this.changed(); break;
+          case 'quota': return json(this.quotaInfo());
+          case 'testkey': {
+            if (!c.apiKey) return json({ error: 'Chưa có API key' }, 400);
+            try {
+              await this.ytCall('videos', `https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ&key=${c.apiKey}`);
+              return json({ ok: true, info: this.quotaInfo() });
+            } catch (e) { return json({ error: e.message, info: this.quotaInfo() }, 400); }
+          }
+          case 'setkey': {
+            const key = String(body.key || '').trim();
+            if (!/^AIza[0-9A-Za-z_-]{30,45}$/.test(key)) return json({ error: 'Key không đúng định dạng (key YouTube bắt đầu bằng "AIza")' }, 400);
+            let j;
+            try { j = await (await fetch(`https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ&key=${key}`)).json(); }
+            catch (e) { return json({ error: 'Không kết nối được YouTube để kiểm tra key' }, 502); }
+            if (j.error) return json({ error: 'Key không dùng được: ' + j.error.message }, 400);
+            this.keyOverride = key;
+            await this.ctx.storage.put('apiKeyOverride', key);
+            await this.refreshKeyId();
+            const u = this.curUsage(); u.videos++; u.lastOk = Date.now(); this.saveUsage();
+            this.searchCache.clear();
+            this.broadcast('state', this.publicState());
+            return json({ ok: true, info: this.quotaInfo() });
+          }
+          case 'resetkey': {
+            if (!this.env.YOUTUBE_API_KEY) return json({ error: 'Không có YOUTUBE_API_KEY trong Cloudflare để quay lại' }, 400);
+            this.keyOverride = '';
+            await this.ctx.storage.delete('apiKeyOverride');
+            await this.refreshKeyId();
+            this.broadcast('state', this.publicState());
+            return json({ ok: true, info: this.quotaInfo() });
+          }
+          case 'setlimit': {
+            const n = parseInt(body.maxSearch, 10);
+            if (!Number.isFinite(n) || n < 0 || n > 100000) return json({ error: 'Giới hạn không hợp lệ' }, 400);
+            this.cfgOverride.maxSearch = n;
+            await this.ctx.storage.put('cfgOverride', this.cfgOverride);
+            this.broadcast('state', this.publicState());
+            return json({ ok: true, info: this.quotaInfo() });
+          }
           case 'clearchat':
             this.chat = [];
             this.ctx.storage.put('chat', this.chat);

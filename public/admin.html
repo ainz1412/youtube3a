@@ -33,6 +33,31 @@
   .progress div { height: 100%; background: #fff; width: 0; transition: width .5s linear; }
   .progress:hover div { background: var(--green); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } #left { overflow: visible; } .chat .msgs { max-height: 40vh; } #queue { max-height: 40vh; } }
+  /* Hạn mức YouTube API */
+  #quotaPanel h2 .tools { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+  .qstatus { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: rgba(30,215,96,.15); color: var(--green); }
+  .qstatus.warn { background: rgba(255,197,61,.15); color: var(--admin); }
+  .qstatus.bad { background: rgba(243,114,127,.15); color: var(--danger); }
+  .qkey { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .qkey code { font-family: inherit; font-weight: 700; color: var(--text); background: rgba(255,255,255,.08); padding: 2px 8px; border-radius: 4px; }
+  .qrow { display: grid; grid-template-columns: 130px 1fr auto; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .qrow .qlabel { font-size: 14px; font-weight: 600; }
+  .qrow .qlabel small { display: block; font-weight: 400; color: var(--subtle); font-size: 11.5px; }
+  .qbar { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+  .qbar div { height: 100%; border-radius: 3px; background: var(--green); width: 0; transition: width .4s, background-color .4s; }
+  .qbar div.warn { background: var(--admin); } .qbar div.bad { background: var(--danger); }
+  .qnum { font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; min-width: 120px; }
+  .qnum b { font-weight: 700; } .qnum span { color: var(--muted); }
+  .qfoot { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--muted); }
+  .qerr { color: var(--danger); }
+  .qhist { display: flex; gap: 6px; align-items: flex-end; height: 64px; margin-top: 14px; }
+  .qhist .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .qhist .col i { display: block; width: 100%; max-width: 34px; background: rgba(255,255,255,.18); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .qhist .col.today i { background: var(--green); }
+  .qhist .col span { font-size: 10.5px; color: var(--subtle); font-variant-numeric: tabular-nums; }
+  #keyModal .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  #keyModal .row { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  #keyModal input[type=number] { width: 100%; background: #121212; border: 1px solid #727272; border-radius: 6px; padding: 11px 14px; color: var(--text); }
 </style>
 </head>
 <body>
@@ -78,6 +103,33 @@
         <div class="muted small" style="margin-top:6px">Dùng Wi-Fi nào hay 4G đều vào được.</div>
       </div>
     </section>
+
+    <section class="panel" id="quotaPanel">
+      <h2>Hạn mức YouTube API <span class="qstatus" id="qStatus">…</span>
+        <span class="tools">
+          <button class="icon" id="qRefresh" title="Làm mới số liệu">⟳</button>
+          <button class="icon" id="qTest" title="Kiểm tra key (tốn 1 đơn vị)">⚡</button>
+          <button class="ghost" id="qEdit">Đổi key</button>
+        </span>
+      </h2>
+      <div class="qkey">Key đang dùng <code id="qKey">—</code> <span id="qSource"></span></div>
+      <div class="qrow">
+        <div class="qlabel">Tìm kiếm<small>search.list</small></div>
+        <div class="qbar"><div id="qSearchBar"></div></div>
+        <div class="qnum" id="qSearchNum"></div>
+      </div>
+      <div class="qrow">
+        <div class="qlabel">Thêm bằng link<small>videos.list</small></div>
+        <div class="qbar"><div id="qVideoBar"></div></div>
+        <div class="qnum" id="qVideoNum"></div>
+      </div>
+      <div class="qfoot">
+        <span id="qReset"></span>
+        <span id="qCache"></span>
+        <span id="qErr"></span>
+      </div>
+      <div class="qhist" id="qHist" title="Số lượt tìm kiếm 7 ngày gần nhất"></div>
+    </section>
   </div>
 
   <div id="right">
@@ -99,6 +151,25 @@
     </section>
   </div>
 </main>
+
+<div class="overlay hidden" id="keyModal">
+  <form class="panel" id="keyForm">
+    <h2>Đổi YouTube API key</h2>
+    <p class="muted small" style="margin:0">Key mới được kiểm tra trước khi lưu và có hiệu lực ngay, không cần vào Cloudflare.</p>
+    <label for="keyInput">API key mới</label>
+    <input type="password" id="keyInput" placeholder="AIza..." autocomplete="off" spellcheck="false">
+    <p class="hint">Để trống nếu chỉ muốn đổi giới hạn tìm kiếm.</p>
+    <label for="limitInput">Giới hạn tìm kiếm mỗi ngày</label>
+    <input type="number" id="limitInput" min="0" max="100000" step="1">
+    <p class="hint">Mặc định của YouTube là 100 lượt/ngày. Đặt 0 để không tự giới hạn.</p>
+    <div class="err-text" id="keyErr"></div>
+    <div class="row">
+      <button class="primary" type="submit" id="keySave">Lưu</button>
+      <button type="button" class="ghost hidden" id="keyRevert">Dùng lại key trong Cloudflare</button>
+      <button type="button" id="keyCancel" style="margin-left:auto">Hủy</button>
+    </div>
+  </form>
+</div>
 
 <div class="overlay hidden" id="loginModal">
   <form class="panel" id="loginForm">
@@ -131,6 +202,8 @@
     loggedIn = true;
     $('#loginModal').classList.add('hidden');
     showShare(r.pin || '');
+    loadQuota();
+    setInterval(loadQuota, 30000);
     hostConn = connectWS(() => ({ role: 'host', pw }), {
       state: render, chatHistory: chat.reset, chat: chat.add, typing: chat.typing,
       connect: () => $('#conn').classList.add('on'),
@@ -239,8 +312,100 @@
   }, 1000);
 
   // ---- Hiển thị ----
+  // ---------- Hạn mức YouTube API ----------
+  let quota = null, lastSearchUsed = null;
+  const fmtN = (n) => Number(n || 0).toLocaleString('vi-VN');
+  async function loadQuota() {
+    const q = await hapi('/api/host/quota');
+    if (q) drawQuota(q);
+  }
+  function barClass(left) { return left <= 10 ? 'bad' : left <= 30 ? 'warn' : ''; }
+  function drawQuota(q) {
+    quota = q;
+    $('#qKey').textContent = q.key || 'chưa có';
+    $('#qSource').textContent = q.keySource === 'admin' ? '· đặt trên trang Admin' : q.keySource === 'cloudflare' ? '· từ Cloudflare Secret' : '';
+    const st = $('#qStatus');
+    const keyErr = q.lastError && /key|API_KEY|forbidden|badRequest|accessNotConfigured/i.test(q.lastError.reason + ' ' + q.lastError.message) && (!q.lastOk || q.lastError.at > q.lastOk);
+    const searchOut = q.search.exhausted || (q.search.limit && q.search.used >= q.search.limit);
+    if (!q.key) { st.textContent = 'Chưa có key'; st.className = 'qstatus bad'; }
+    else if (keyErr) { st.textContent = 'Key lỗi'; st.className = 'qstatus bad'; }
+    else if (searchOut) { st.textContent = 'Hết lượt tìm'; st.className = 'qstatus warn'; }
+    else { st.textContent = 'Hoạt động'; st.className = 'qstatus'; }
+
+    const row = (bar, num, used, limit, exhausted) => {
+      const pctLeft = limit ? Math.max(0, Math.round((1 - used / limit) * 100)) : 100;
+      const left = exhausted ? 0 : pctLeft;
+      bar.style.width = (limit ? Math.min(100, (used / limit) * 100) : 0) + '%';
+      if (exhausted) bar.style.width = '100%';
+      bar.className = barClass(left);
+      num.innerHTML = '';
+      num.append(el('b', {}, fmtN(used)), el('span', {}, limit ? ` / ${fmtN(limit)} · còn ${left}%` : ' lượt · không giới hạn'));
+    };
+    row($('#qSearchBar'), $('#qSearchNum'), q.search.used, q.search.limit, q.search.exhausted);
+    row($('#qVideoBar'), $('#qVideoNum'), q.videos.used, q.videos.limit, q.videos.exhausted);
+    $('#qCache').textContent = q.cachedSearches ? `${q.cachedSearches} từ khóa đang lưu đệm (tìm lại không tốn lượt)` : '';
+    const e = q.lastError;
+    $('#qErr').textContent = e ? `Lỗi gần nhất ${fmtTime(e.at)}: ${e.reason}` : '';
+    $('#qErr').className = 'qerr';
+    $('#qErr').title = e ? e.message : '';
+
+    const hist = $('#qHist'); hist.innerHTML = '';
+    const days = q.history.slice().reverse();
+    const max = Math.max(q.search.limit || 0, ...days.map((d) => d.search), 1);
+    days.forEach((d, i) => {
+      const [, m, dd] = d.day.split('-');
+      hist.append(el('div', { class: 'col' + (i === days.length - 1 ? ' today' : ''), title: `${dd}/${m}: ${d.search} lượt tìm, ${d.videos} lượt thêm bằng link` },
+        el('i', { style: `height:${Math.max(2, (d.search / max) * 44)}px` }), el('span', {}, `${dd}/${m}`)));
+    });
+    tickReset();
+  }
+  function tickReset() {
+    if (!quota) return;
+    const ms = Math.max(0, quota.resetAt - Date.now());
+    const h = Math.floor(ms / 3600e3), m = Math.floor((ms % 3600e3) / 60e3);
+    $('#qReset').textContent = `Reset sau ${h} giờ ${m} phút (lúc ${fmtTime(quota.resetAt)})`;
+    if (ms === 0) loadQuota();
+  }
+  setInterval(tickReset, 30000);
+  $('#qRefresh').addEventListener('click', () => loadQuota().then(() => toast('Đã cập nhật số liệu')));
+  $('#qTest').addEventListener('click', async () => {
+    try {
+      const r = await api('/api/host/testkey', { pw });
+      drawQuota(r.info); toast('✅ Key hoạt động bình thường');
+    } catch (e) { toast(e.message, true); loadQuota(); }
+  });
+  $('#qEdit').addEventListener('click', () => {
+    $('#keyInput').value = '';
+    $('#limitInput').value = quota ? quota.search.limit : 100;
+    $('#keyErr').textContent = '';
+    $('#keyRevert').classList.toggle('hidden', !(quota && quota.keySource === 'admin' && quota.hasEnvKey));
+    $('#keyModal').classList.remove('hidden');
+    setTimeout(() => $('#keyInput').focus(), 50);
+  });
+  $('#keyCancel').addEventListener('click', () => $('#keyModal').classList.add('hidden'));
+  $('#keyRevert').addEventListener('click', async () => {
+    try { const r = await api('/api/host/resetkey', { pw }); drawQuota(r.info); $('#keyModal').classList.add('hidden'); toast('Đã quay lại key trong Cloudflare'); }
+    catch (e) { $('#keyErr').textContent = e.message; }
+  });
+  $('#keyForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const key = $('#keyInput').value.trim();
+    const limit = $('#limitInput').value;
+    const btn = $('#keySave'); btn.disabled = true; btn.textContent = key ? 'Đang kiểm tra key…' : 'Đang lưu…';
+    $('#keyErr').textContent = '';
+    try {
+      if (key) { const r = await api('/api/host/setkey', { pw, key }); drawQuota(r.info); }
+      if (limit !== '' && (!quota || +limit !== quota.search.limit)) { const r = await api('/api/host/setlimit', { pw, maxSearch: +limit }); drawQuota(r.info); }
+      $('#keyModal').classList.add('hidden');
+      toast(key ? '✅ Đã đổi key, bắt đầu đếm lượt cho key mới' : 'Đã lưu');
+    } catch (err) { $('#keyErr').textContent = err.message; }
+    finally { btn.disabled = false; btn.textContent = 'Lưu'; }
+  });
+
   function render(s) {
     state = s;
+    const sk = s.search ? s.search.used + '|' + s.search.available + '|' + s.search.limit : '';
+    if (sk !== lastSearchUsed) { const first = lastSearchUsed === null; lastSearchUsed = sk; if (!first && loggedIn) loadQuota(); }
     const now = $('#now');
     now.innerHTML = '';
     if (s.nowPlaying) {

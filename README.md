@@ -45,7 +45,16 @@ Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở 
 |---|---|---|
 | `MAX_SONGS_PER_USER` | Số bài tối đa mỗi người xếp chờ cùng lúc (0 = không giới hạn) | 3 |
 | `MAX_DURATION_MIN` | Video dài tối đa bao nhiêu phút (0 = không giới hạn) | 15 |
-| `MAX_SEARCHES_PER_DAY` | Giới hạn lượt tìm kiếm mỗi ngày để không vượt hạn mức miễn phí của YouTube (0 = không giới hạn) | 90 |
+| `MAX_SEARCHES_PER_DAY` | Giới hạn lượt tìm kiếm mỗi ngày (0 = không giới hạn). Có thể đổi trên trang `/admin` | 100 |
+
+## Theo dõi hạn mức & đổi API key
+Trang `/admin` có khung **Hạn mức YouTube API**:
+- Số lượt **tìm kiếm** (search.list, mặc định 100 lượt/ngày) và **thêm bằng link** (videos.list, 10.000 đơn vị/ngày) mà website đã dùng hôm nay, giờ reset, lỗi gần nhất, biểu đồ 7 ngày.
+- Nút ⚡ kiểm tra key, nút **Đổi key**: key mới được kiểm tra trước khi lưu và có hiệu lực ngay (ưu tiên hơn `YOUTUBE_API_KEY` trong Cloudflare). Có thể đổi giới hạn tìm kiếm mỗi ngày.
+- Khi YouTube báo hết hạn mức (`quotaExceeded`), website tự nhận biết: trang khách hiện thông báo và chuyển sang chế độ tìm trên YouTube rồi dán link.
+
+> Số liệu do website tự đếm cho key đang dùng. Nếu key đó còn được dùng ở nơi khác, con số thực tế trong Google Cloud Console sẽ cao hơn.
+> Theo chính sách YouTube API, mỗi dịch vụ chỉ dùng một dự án Google Cloud; muốn thêm hạn mức hãy gửi *Audit and Quota Extension Form*.
 
 ## Lưu ý
 - **Hạn mức YouTube API:** mức miễn phí là 10.000 đơn vị/ngày, mỗi lượt tìm tốn khoảng 101 đơn vị, tức khoảng 98 lượt/ngày. Kết quả tìm giống nhau được lưu tạm 1 giờ. Thêm bằng link chỉ tốn 1 đơn vị và không bị giới hạn. Hạn mức reset lúc 14–15h giờ Việt Nam.
