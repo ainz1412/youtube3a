@@ -84,8 +84,10 @@ export class Room extends DurableObject {
     this.keyOverride = '';    // key do Admin đặt trên trang /admin (ưu tiên hơn Cloudflare Secret)
     this.cfgOverride = {};
     this.kid = 'none';
+    this.speaker = null;      // { id, label, since }: thiết bị Admin đang phát nhạc ra loa
+    this.player = null;       // trạng thái trình phát do máy phát báo về: { paused, volume, t, d, at }
     ctx.blockConcurrencyWhile(async () => {
-      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride']);
+      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride', 'speaker']);
       const s = m.get('state'), c = m.get('chat');
       if (s) Object.assign(this.state, s);
       if (Array.isArray(c)) this.chat = c;
@@ -93,6 +95,7 @@ export class Room extends DurableObject {
       this.usageHist = m.get('usageHist') || [];
       this.keyOverride = m.get('apiKeyOverride') || '';
       this.cfgOverride = m.get('cfgOverride') || {};
+      this.speaker = m.get('speaker') || null;
       await this.refreshKeyId();
     });
     // Trả lời "ping" mà không cần đánh thức Durable Object (tiết kiệm hạn mức miễn phí)
@@ -217,6 +220,21 @@ export class Room extends DurableObject {
     if (kind === 'search') this.broadcast('state', this.publicState());
     return j;
   }
+  // ----- Máy phát & điều khiển từ xa -----
+  attachment(ws) { try { return ws.deserializeAttachment() || {}; } catch (e) { return {}; } }
+  speakerInfo(exclude) {
+    if (!this.speaker) return null;
+    const online = this.ctx.getWebSockets().some((ws) => ws !== exclude && this.attachment(ws).isHost && this.attachment(ws).deviceId === this.speaker.id);
+    return { ...this.speaker, online };
+  }
+  broadcastHosts(type, data, exclude) {
+    const msg = JSON.stringify({ type, data });
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws !== exclude && this.attachment(ws).isHost) { try { ws.send(msg); } catch (e) {} }
+    }
+  }
+  fromSpeaker(deviceId) { return !this.speaker || !deviceId || this.speaker.id === deviceId; }
+
   send(ws, type, data) { try { ws.send(JSON.stringify({ type, data })); } catch (e) {} }
   broadcast(type, data, exclude) {
     const msg = JSON.stringify({ type, data });
@@ -378,9 +396,9 @@ export class Room extends DurableObject {
         const s = this.state;
         switch (p.slice(10)) {
           case 'next': this.playNext(); break;
-          case 'ended': if (s.nowPlaying && body.id === s.nowPlaying.id) this.playNext(); break;
+          case 'ended': if (this.fromSpeaker(body.deviceId) && s.nowPlaying && body.id === s.nowPlaying.id) this.playNext(); break;
           case 'error':
-            if (s.nowPlaying && body.id === s.nowPlaying.id) {
+            if (this.fromSpeaker(body.deviceId) && s.nowPlaying && body.id === s.nowPlaying.id) {
               const reasons = {
                 2: 'mã video không hợp lệ',
                 5: 'lỗi trình phát của trình duyệt',
@@ -397,7 +415,7 @@ export class Room extends DurableObject {
             }
             break;
           case 'paused':
-            if (s.paused !== !!body.paused) { s.paused = !!body.paused; this.changed(); }
+            if (this.fromSpeaker(body.deviceId) && s.paused !== !!body.paused) { s.paused = !!body.paused; this.changed(); }
             break;
           case 'move': {
             const i = s.queue.findIndex((x) => x.id === body.id);
@@ -411,6 +429,20 @@ export class Room extends DurableObject {
           }
           case 'clear': s.queue = []; this.changed(); break;
           case 'quota': return json(this.quotaInfo());
+          case 'claim': {
+            // Thiết bị muốn làm máy phát. Nếu máy phát khác đang online thì hỏi lại trước (force).
+            const id = String(body.deviceId || '').slice(0, 64);
+            if (!id) return json({ error: 'Thiếu mã thiết bị' }, 400);
+            const cur = this.speakerInfo();
+            if (cur && cur.id !== id && cur.online && !body.force) return json({ conflict: true, speaker: cur });
+            const label = String(body.label || 'Thiết bị').replace(/\s+/g, ' ').trim().slice(0, 40);
+            const changedDevice = !cur || cur.id !== id;
+            this.speaker = { id, label, since: Date.now() };
+            await this.ctx.storage.put('speaker', this.speaker);
+            this.broadcastHosts('speaker', this.speakerInfo());
+            if (changedDevice && cur) this.systemMsg(`🔊 Nhạc chuyển sang phát trên: ${label}`);
+            return json({ ok: true, speaker: this.speakerInfo() });
+          }
           case 'testkey': {
             if (!c.apiKey) return json({ error: 'Chưa có API key' }, 400);
             try {
@@ -476,10 +508,15 @@ export class Room extends DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ name: cleanName(url.searchParams.get('name')), isHost });
+    const deviceId = isHost ? String(url.searchParams.get('device') || '').slice(0, 64) : '';
+    server.serializeAttachment({ name: cleanName(url.searchParams.get('name')), isHost, deviceId });
     this.send(server, 'state', this.publicState());
     this.send(server, 'chatHistory', this.chat.slice(-50));
     this.broadcast('state', this.publicState(), server); // cập nhật danh sách online cho người khác
+    if (isHost) {
+      this.send(server, 'player', this.player);
+      this.broadcastHosts('speaker', this.speakerInfo()); // báo máy phát online / offline
+    }
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -496,13 +533,30 @@ export class Room extends DurableObject {
       try { a = ws.deserializeAttachment(); } catch (e) {}
       const name = a?.isHost ? 'Admin' : a?.name;
       if (name) this.broadcast('typing', { name }, ws);
+      return;
+    }
+    const a = this.attachment(ws);
+    if (!a.isHost || !m) return;
+    if (m.type === 'cmd') {
+      // Lệnh từ thiết bị điều khiển -> chuyển cho máy phát
+      const actions = ['toggle', 'play', 'pause', 'volume', 'seek'];
+      if (!actions.includes(m.action)) return;
+      const value = Number.isFinite(+m.value) ? Math.max(0, Math.min(m.action === 'volume' ? 100 : 86400, +m.value)) : null;
+      this.broadcastHosts('cmd', { action: m.action, value, from: a.deviceId });
+    } else if (m.type === 'status' && this.speaker && a.deviceId === this.speaker.id) {
+      // Máy phát báo trạng thái -> chuyển cho các thiết bị điều khiển
+      const n = (v, max) => (Number.isFinite(+v) ? Math.max(0, Math.min(max, +v)) : 0);
+      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 11), at: Date.now() };
+      this.broadcastHosts('player', this.player, ws);
     }
   }
   webSocketClose(ws) {
     try { ws.close(1000, 'bye'); } catch (e) {}
     this.broadcast('state', this.publicState(ws), ws);
+    if (this.attachment(ws).isHost) this.broadcastHosts('speaker', this.speakerInfo(ws), ws);
   }
   webSocketError(ws) {
     this.broadcast('state', this.publicState(ws), ws);
+    if (this.attachment(ws).isHost) this.broadcastHosts('speaker', this.speakerInfo(ws), ws);
   }
 }

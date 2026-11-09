@@ -47,6 +47,11 @@ Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở 
 | `MAX_DURATION_MIN` | Video dài tối đa bao nhiêu phút (0 = không giới hạn) | 15 |
 | `MAX_SEARCHES_PER_DAY` | Giới hạn lượt tìm kiếm mỗi ngày (0 = không giới hạn). Có thể đổi trên trang `/admin` | 100 |
 
+## Mở trang Admin trên nhiều thiết bị
+- Trên máy tính nối loa: mở `/admin` → bấm **Phát nhạc trên thiết bị này**. Thiết bị này thành **Máy phát**.
+- Trên điện thoại / laptop khác: mở `/admin` → tự thành **Điều khiển từ xa**: tạm dừng, phát tiếp, âm lượng, bấm thanh tiến trình để tua, chuyển bài, sắp xếp hàng chờ, chat… đều tác động lên máy phát.
+- Nếu bấm phát trên thiết bị thứ hai, trang hỏi có chuyển máy phát sang thiết bị này không; máy cũ tự dừng nên không bao giờ có 2 nơi cùng phát.
+
 ## Theo dõi hạn mức & đổi API key
 Trang `/admin` có khung **Hạn mức YouTube API**:
 - Số lượt **tìm kiếm** (search.list, mặc định 100 lượt/ngày) và **thêm bằng link** (videos.list, 10.000 đơn vị/ngày) mà website đã dùng hôm nay, giờ reset, lỗi gần nhất, biểu đồ 7 ngày.

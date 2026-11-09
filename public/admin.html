@@ -16,7 +16,13 @@
   #left { overflow-y: auto; }
   .playerWrap { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: var(--radius); overflow: hidden; max-height: 52vh; flex: none; }
   .playerWrap iframe, #player { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #startOverlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.85); z-index: 2; text-align: center; padding: 20px; }
+  #startOverlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.88); z-index: 2; text-align: center; padding: 20px; }
+  .ov-title { font-size: 19px; font-weight: 700; margin: 0 0 6px; }
+  .ov-icon { font-size: 34px; margin-bottom: 6px; }
+  #modeBadge { margin-left: 6px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.1); color: var(--muted); }
+  #modeBadge.speaker { background: rgba(30,215,96,.15); color: var(--green); }
+  .progress { cursor: pointer; position: relative; }
+  .progress::before { content: ''; position: absolute; inset: -8px 0; }
   .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .controls input[type=range] { width: 130px; accent-color: var(--green); }
   #playPause { background: #fff; color: #000; font-weight: 700; padding: 9px 18px; }
@@ -64,6 +70,7 @@
 <header>
   <div class="logo">♪</div>
   <h1>Jukebox · <span style="color:var(--admin)">Admin</span></h1>
+  <span id="modeBadge">Điều khiển từ xa</span>
   <div class="me"><span class="dot" id="conn"></span><span id="hdrUrl" style="color:var(--text);font-weight:600"></span>
     · <a href="#" id="logout" style="color:var(--muted)">đăng xuất</a></div>
 </header>
@@ -73,10 +80,24 @@
     <div class="playerWrap">
       <div id="player"></div>
       <div id="startOverlay">
-        <div>
-          <p style="font-size:18px;margin:0 0 6px">Sẵn sàng phát nhạc cho cả phòng</p>
-          <p class="muted small" style="margin:0 0 16px">Hãy đăng nhập YouTube Premium trên trình duyệt này để không có quảng cáo.<br>Trình duyệt yêu cầu bấm 1 lần để cho phép tự phát.</p>
-          <button class="primary" id="startBtn" style="font-size:17px;padding:12px 24px">▶ Bắt đầu phát</button>
+        <div id="ovStart">
+          <p class="ov-title">Sẵn sàng phát nhạc cho cả phòng</p>
+          <p class="muted small" style="margin:0 0 18px">Chỉ bấm trên máy tính nối loa, đã đăng nhập YouTube Premium.<br>Các thiết bị khác mở trang này sẽ thành điều khiển từ xa.</p>
+          <button class="primary" id="startBtn" style="font-size:16px;padding:12px 24px">▶ Phát nhạc trên thiết bị này</button>
+        </div>
+        <div id="ovRemote" class="hidden">
+          <div class="ov-icon">🎛️</div>
+          <p class="ov-title">Thiết bị này đang là điều khiển từ xa</p>
+          <p class="muted small" style="margin:0 0 18px">Nhạc đang phát trên <b id="spkName" style="color:var(--text)"></b> <span id="spkOnline"></span><br>Tạm dừng, âm lượng và tua bài bên dưới sẽ điều khiển thiết bị đó.</p>
+          <button class="ghost" id="takeOver">Chuyển sang phát trên thiết bị này</button>
+        </div>
+        <div id="ovConflict" class="hidden">
+          <p class="ov-title">Nhạc đang phát trên <span id="cfName"></span></p>
+          <p class="muted small" style="margin:0 0 18px">Chuyển sang phát trên thiết bị này? Thiết bị kia sẽ tự dừng.</p>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="primary" id="cfYes">Chuyển sang thiết bị này</button>
+            <button class="ghost" id="cfNo">Chỉ dùng để điều khiển</button>
+          </div>
         </div>
       </div>
     </div>
@@ -193,6 +214,23 @@
     onTyping: () => hostConn && hostConn.send({ type: 'typing' }),
   });
   let player = null, playerReady = false, started = false, loggedIn = false;
+  // Mỗi trình duyệt có 1 mã thiết bị riêng để máy chủ biết thiết bị nào là máy phát
+  const deviceId = localStorage.getItem('jb_device') || (() => {
+    const id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('jb_device', id); return id;
+  })();
+  const deviceLabel = (() => {
+    const ua = navigator.userAgent;
+    const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad'
+      : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Điện thoại Android' : 'Máy tính bảng Android')
+      : /Mac OS X/.test(ua) ? 'Máy Mac' : /Windows/.test(ua) ? 'Máy tính Windows' : /Linux/.test(ua) ? 'Máy tính Linux' : 'Thiết bị';
+    const br = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+    return br ? `${os} (${br})` : os;
+  })();
+  let speaker = null;   // { id, label, online } — thiết bị đang phát ra loa
+  let remote = null;    // trạng thái trình phát do máy phát báo về
+  const isSpeaker = () => !!speaker && speaker.id === deviceId;
+  const controlling = () => started && isSpeaker(); // thiết bị này đang thực sự phát nhạc
   let state = null, loadedId = null, retriedId = null;
 
   // ---- Đăng nhập ----
@@ -204,8 +242,9 @@
     showShare(r.pin || '');
     loadQuota();
     setInterval(loadQuota, 30000);
-    hostConn = connectWS(() => ({ role: 'host', pw }), {
+    hostConn = connectWS(() => ({ role: 'host', pw, device: deviceId }), {
       state: render, chatHistory: chat.reset, chat: chat.add, typing: chat.typing,
+      speaker: onSpeaker, player: onPlayer, cmd: onCmd,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),
     });
@@ -228,23 +267,25 @@
     $('#qr').classList.remove('hidden');
   }
 
-  // ---- YouTube player ----
+  // ---- YouTube player (chỉ phát trên thiết bị là máy phát) ----
+  const isPlaying = () => playerReady && [YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(player.getPlayerState());
   window.onYouTubeIframeAPIReady = () => {
     player = new YT.Player('player', {
       width: '100%', height: '100%',
       playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
       events: {
-        onReady: () => { playerReady = true; player.setVolume(+$('#vol').value); lockRate(); sync(); },
+        onReady: () => { playerReady = true; player.setVolume(+(localStorage.getItem('jb_vol') || 80)); lockRate(); sync(); },
         onPlaybackRateChange: () => lockRate(),
         onStateChange: (e) => {
-          if (!loggedIn) return;
-          if (e.data === YT.PlayerState.ENDED && state?.nowPlaying) hapi('/api/host/ended', { id: state.nowPlaying.id });
-          if (e.data === YT.PlayerState.PAUSED) { setPPLabel(true); if (!state?.paused) hapi('/api/host/paused', { paused: true }); }
-          if (e.data === YT.PlayerState.PLAYING) { lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false }); }
+          if (!controlling()) return;
+          if (e.data === YT.PlayerState.ENDED && state?.nowPlaying) hapi('/api/host/ended', { id: state.nowPlaying.id, deviceId });
+          if (e.data === YT.PlayerState.PAUSED) { setPPLabel(true); if (!state?.paused) hapi('/api/host/paused', { paused: true, deviceId }); }
+          if (e.data === YT.PlayerState.PLAYING) { lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false, deviceId }); }
+          reportStatus();
         },
         onError: (e) => {
           console.warn('YT error', e.data);
-          if (!loggedIn || !state?.nowPlaying) return;
+          if (!controlling() || !state?.nowPlaying) return;
           const n = state.nowPlaying;
           // Lỗi 5 (trình phát HTML5) thường chỉ tạm thời: thử phát lại 1 lần trước khi bỏ qua bài
           if (e.data === 5 && retriedId !== n.id) {
@@ -252,7 +293,7 @@
             setTimeout(() => { if (state?.nowPlaying?.id === n.id) player.loadVideoById(n.videoId); }, 1500);
             return;
           }
-          hapi('/api/host/error', { id: n.id, code: e.data });
+          hapi('/api/host/error', { id: n.id, code: e.data, deviceId });
         },
       },
     });
@@ -265,7 +306,7 @@
   // làm thay đổi tốc độ, tự đưa về 1x và báo cho Admin biết.
   let rateWarned = false;
   function lockRate() {
-    if (!playerReady || typeof player.getPlaybackRate !== 'function') return;
+    if (!controlling() || !playerReady || typeof player.getPlaybackRate !== 'function') return;
     const r = player.getPlaybackRate();
     $('#rate').textContent = 'Tốc độ ' + r + 'x';
     $('#rate').classList.toggle('me', r !== 1);
@@ -279,36 +320,146 @@
   }
 
   function sync() {
-    if (!playerReady || !started || !state) return;
+    if (!playerReady || !controlling() || !state) return;
     const n = state.nowPlaying;
     if (!n) { if (loadedId) { player.stopVideo(); loadedId = null; } return; }
     if (n.id !== loadedId) { loadedId = n.id; player.loadVideoById(n.videoId); }
   }
 
-  $('#startBtn').addEventListener('click', () => {
-    started = true;
-    $('#startOverlay').classList.add('hidden');
-    sync();
-  });
+  // ---- Máy phát / điều khiển từ xa ----
+  function showOverlay(which) {
+    ['ovStart', 'ovRemote', 'ovConflict'].forEach((id) => $('#' + id).classList.toggle('hidden', id !== which));
+    $('#startOverlay').classList.toggle('hidden', !which);
+  }
+  function refreshMode() {
+    if (controlling()) showOverlay(null);
+    else if (speaker && !isSpeaker()) {
+      $('#spkName').textContent = speaker.label;
+      $('#spkOnline').textContent = speaker.online ? '(đang mở)' : '(đang tắt hoặc mất kết nối)';
+      $('#takeOver').className = speaker.online ? 'ghost' : 'primary';
+      showOverlay('ovRemote');
+    } else showOverlay('ovStart');
+    $('#startBtn').textContent = isSpeaker() ? '▶ Tiếp tục phát trên thiết bị này' : '▶ Phát nhạc trên thiết bị này';
+    const badge = $('#modeBadge');
+    badge.textContent = controlling() ? '🔊 Máy phát' : speaker ? '🎛️ Điều khiển từ xa' : 'Chưa phát nhạc';
+    badge.className = controlling() ? 'speaker' : '';
+    $('#rate').classList.toggle('hidden', !controlling());
+    if (!controlling() && remote) setPPLabel(remote.paused);
+  }
+  async function claim(force) {
+    try {
+      const r = await api('/api/host/claim', { pw, deviceId, label: deviceLabel, force: !!force });
+      if (r.conflict) { $('#cfName').textContent = r.speaker.label; showOverlay('ovConflict'); return; }
+      speaker = r.speaker;
+      started = true;
+      refreshMode(); sync();
+      if (playerReady && state?.nowPlaying && loadedId) player.playVideo();
+      setTimeout(reportStatus, 800);
+    } catch (e) { toast(e.message, true); }
+  }
+  $('#startBtn').addEventListener('click', () => claim(false));
+  $('#takeOver').addEventListener('click', () => claim(false));
+  $('#cfYes').addEventListener('click', () => claim(true));
+  $('#cfNo').addEventListener('click', () => { if (!speaker) showOverlay('ovStart'); else refreshMode(); });
+
+  function onSpeaker(sp) {
+    const wasPlayingHere = controlling();
+    speaker = sp;
+    if (wasPlayingHere && !isSpeaker()) {
+      // Thiết bị khác đã nhận làm máy phát -> dừng phát ở đây
+      started = false; loadedId = null;
+      if (playerReady) player.stopVideo();
+      toast(`Nhạc đã chuyển sang ${sp.label}. Thiết bị này giờ là điều khiển từ xa.`);
+    }
+    refreshMode();
+  }
+  function reportStatus() {
+    if (!controlling() || !playerReady || !hostConn || typeof player.getCurrentTime !== 'function') return;
+    hostConn.send({
+      type: 'status', paused: !isPlaying(), volume: player.getVolume(),
+      t: player.getCurrentTime() || 0, d: player.getDuration() || 0,
+      videoId: state?.nowPlaying?.videoId || '',
+    });
+  }
+  function onCmd(c) {
+    if (!controlling() || !playerReady || !c) return;
+    if (c.action === 'toggle') isPlaying() ? player.pauseVideo() : player.playVideo();
+    else if (c.action === 'pause') player.pauseVideo();
+    else if (c.action === 'play') player.playVideo();
+    else if (c.action === 'volume' && c.value != null) { player.setVolume(c.value); $('#vol').value = c.value; localStorage.setItem('jb_vol', c.value); }
+    else if (c.action === 'seek' && c.value != null) player.seekTo(c.value, true);
+    setTimeout(reportStatus, 400);
+  }
+  let volDragging = false;
+  function onPlayer(p) {
+    remote = p ? { ...p, recvAt: Date.now() } : null;
+    if (controlling() || !p) return;
+    if (!volDragging) $('#vol').value = p.volume;
+    setPPLabel(p.paused);
+  }
+  const sendCmd = (action, value) => hostConn && hostConn.send({ type: 'cmd', action, value });
 
   // ---- Điều khiển ----
   function setPPLabel(paused) { $('#playPause').textContent = paused ? '▶ Phát tiếp' : '⏸ Tạm dừng'; }
   $('#playPause').addEventListener('click', () => {
-    if (!playerReady) return;
-    player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
+    if (controlling()) { if (playerReady) isPlaying() ? player.pauseVideo() : player.playVideo(); }
+    else {
+      if (!speaker || !speaker.online) return toast('Máy phát đang tắt. Hãy mở trang Admin trên máy nối loa.', true);
+      sendCmd('toggle');
+      if (remote) { remote = { ...remote, paused: !remote.paused, t: currentRemoteTime(), recvAt: Date.now() }; setPPLabel(remote.paused); }
+    }
   });
   $('#skip').addEventListener('click', () => hapi('/api/host/next'));
   $('#vol').value = localStorage.getItem('jb_vol') || 80;
-  $('#vol').addEventListener('input', (e) => { if (playerReady) player.setVolume(+e.target.value); localStorage.setItem('jb_vol', e.target.value); });
+  let volTimer = null;
+  $('#vol').addEventListener('pointerdown', () => { volDragging = true; });
+  window.addEventListener('pointerup', () => { volDragging = false; });
+  $('#vol').addEventListener('input', (e) => {
+    const v = +e.target.value;
+    if (controlling()) {
+      if (playerReady) player.setVolume(v);
+      localStorage.setItem('jb_vol', v);
+      clearTimeout(volTimer); volTimer = setTimeout(reportStatus, 300);
+    } else {
+      clearTimeout(volTimer); volTimer = setTimeout(() => sendCmd('volume', v), 120);
+    }
+  });
+  // Bấm vào thanh tiến trình để tua
+  $('.progress').addEventListener('click', (e) => {
+    const n = state?.nowPlaying; if (!n) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    if (controlling()) { if (playerReady) { player.seekTo(frac * (player.getDuration() || n.duration), true); setTimeout(reportStatus, 400); } }
+    else {
+      const d = (remote && remote.d) || n.duration;
+      sendCmd('seek', Math.round(frac * d));
+      if (remote) remote = { ...remote, t: frac * d, recvAt: Date.now() };
+    }
+  });
   $('#clearQ').addEventListener('click', () => { if (confirm('Xóa toàn bộ hàng chờ?')) hapi('/api/host/clear'); });
   $('#clearChat').addEventListener('click', () => { if (confirm('Xóa toàn bộ chat?')) hapi('/api/host/clearchat'); });
 
+  function currentRemoteTime() {
+    if (!remote) return 0;
+    return remote.t + (remote.paused ? 0 : (Date.now() - remote.recvAt) / 1000);
+  }
+  function drawProgress(t, d) {
+    $('#prog').style.width = d ? Math.min(100, (t / d) * 100) + '%' : '0';
+    $('#time').textContent = d ? fmtDur(t) + ' / ' + fmtDur(d) : '';
+  }
+  let tick = 0;
   setInterval(() => {
-    lockRate();
-    if (!playerReady || !state?.nowPlaying || typeof player.getCurrentTime !== 'function') return;
-    const t = player.getCurrentTime() || 0, d = player.getDuration() || state.nowPlaying.duration || 1;
-    $('#prog').style.width = Math.min(100, (t / d) * 100) + '%';
-    $('#time').textContent = fmtDur(t) + ' / ' + fmtDur(d);
+    tick++;
+    const n = state?.nowPlaying;
+    if (controlling()) {
+      lockRate();
+      if (!playerReady || !n || typeof player.getCurrentTime !== 'function') return;
+      drawProgress(player.getCurrentTime() || 0, player.getDuration() || n.duration || 0);
+      if (tick % 5 === 0) reportStatus();
+    } else if (n && remote && (!remote.videoId || remote.videoId === n.videoId)) {
+      const d = remote.d || n.duration;
+      drawProgress(Math.min(currentRemoteTime(), d), d);
+    } else drawProgress(0, 0);
   }, 1000);
 
   // ---- Hiển thị ----
