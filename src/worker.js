@@ -70,6 +70,8 @@ function ptInfo(now = Date.now()) {
 const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. Bạn vẫn thêm được bài bằng cách dán link YouTube.';
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+// Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
+const APP_VERSION = '2026-11-09.5';
 
 // ---------- Phòng nhạc ----------
 export class Room extends DurableObject {
@@ -86,9 +88,10 @@ export class Room extends DurableObject {
     this.cfgOverride = {};
     this.kid = 'none';
     this.speaker = null;      // { id, label, since }: thiết bị Admin đang phát nhạc ra loa
+    this.notice = null;       // { text, at }: thông báo chạy ngang trên đầu trang
     this.player = null;       // trạng thái trình phát do máy phát báo về: { paused, volume, t, d, at }
     ctx.blockConcurrencyWhile(async () => {
-      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride', 'speaker']);
+      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride', 'speaker', 'notice']);
       const s = m.get('state'), c = m.get('chat');
       if (s) Object.assign(this.state, s);
       if (Array.isArray(c)) this.chat = c;
@@ -97,6 +100,7 @@ export class Room extends DurableObject {
       this.keyOverride = m.get('apiKeyOverride') || '';
       this.cfgOverride = m.get('cfgOverride') || {};
       this.speaker = m.get('speaker') || null;
+      this.notice = m.get('notice') || null;
       await this.refreshKeyId();
     });
     // Trả lời "ping" mà không cần đánh thức Durable Object (tiết kiệm hạn mức miễn phí)
@@ -148,6 +152,7 @@ export class Room extends DurableObject {
       online,
       limits: { maxSongsPerUser: c.maxSongs, maxDurationMin: c.maxDur },
       search: this.searchInfo(),
+      notice: this.notice,
     };
   }
 
@@ -234,7 +239,8 @@ export class Room extends DurableObject {
       if (ws !== exclude && this.attachment(ws).isHost) { try { ws.send(msg); } catch (e) {} }
     }
   }
-  fromSpeaker(deviceId) { return !this.speaker || !deviceId || this.speaker.id === deviceId; }
+  // Chỉ máy phát mới được báo hết bài / lỗi / tạm dừng. Tab Admin cũ (không gửi mã thiết bị) bị bỏ qua khi đã có máy phát.
+  fromSpeaker(deviceId) { return !this.speaker || (!!deviceId && this.speaker.id === deviceId); }
 
   send(ws, type, data) { try { ws.send(JSON.stringify({ type, data })); } catch (e) {} }
   broadcast(type, data, exclude) {
@@ -429,6 +435,8 @@ export class Room extends DurableObject {
           case 'next': this.playNext(); break;
           case 'ended': if (this.fromSpeaker(body.deviceId) && s.nowPlaying && body.id === s.nowPlaying.id) this.playNext(); break;
           case 'error':
+            // Tab Admin đời cũ không gửi mã lỗi -> bỏ qua để nó không làm nhảy bài liên tục
+            if (body.code === undefined || body.code === null || body.code === '') break;
             if (this.fromSpeaker(body.deviceId) && s.nowPlaying && body.id === s.nowPlaying.id) {
               const reasons = {
                 2: 'mã video không hợp lệ',
@@ -460,6 +468,13 @@ export class Room extends DurableObject {
           }
           case 'clear': s.queue = []; this.changed(); break;
           case 'quota': return json(this.quotaInfo());
+          case 'notice': {
+            const text = String(body.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+            this.notice = text ? { text, at: Date.now() } : null;
+            if (this.notice) await this.ctx.storage.put('notice', this.notice); else await this.ctx.storage.delete('notice');
+            this.broadcast('state', this.publicState());
+            return json({ ok: true, notice: this.notice });
+          }
           case 'claim': {
             // Thiết bị muốn làm máy phát. Nếu máy phát khác đang online thì hỏi lại trước (force).
             const id = String(body.deviceId || '').slice(0, 64);
@@ -541,6 +556,7 @@ export class Room extends DurableObject {
     this.ctx.acceptWebSocket(server);
     const deviceId = isHost ? String(url.searchParams.get('device') || '').slice(0, 64) : '';
     server.serializeAttachment({ name: cleanName(url.searchParams.get('name')), isHost, deviceId });
+    this.send(server, 'hello', { version: APP_VERSION });
     this.send(server, 'state', this.publicState());
     this.send(server, 'chatHistory', this.chat.slice(-50));
     this.broadcast('state', this.publicState(), server); // cập nhật danh sách online cho người khác

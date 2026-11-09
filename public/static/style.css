@@ -66,10 +66,31 @@ input::placeholder { color: var(--subtle); }
 /* ---------- đầu trang ---------- */
 header { display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: #000; position: sticky; top: 0; z-index: 5; height: 57px; }
 header h1 { font-size: 20px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
-header .me { margin-left: auto; font-size: 13px; color: var(--muted); }
+header .me { margin-left: auto; font-size: 13px; color: var(--muted); flex: none; white-space: nowrap; }
 header .me a { color: var(--text); font-weight: 600; text-decoration: none; }
 header .me a:hover { text-decoration: underline; }
 .logo { width: 30px; height: 30px; border-radius: 50%; background: var(--green); display: grid; place-items: center; font-weight: 800; color: #000; font-size: 16px; }
+
+/* ---------- thông báo chạy ngang ---------- */
+.marquee { flex: 1; min-width: 0; height: 34px; margin: 0 20px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.06); border-radius: 999px; padding: 0 4px 0 12px; overflow: hidden; }
+.marquee .mq-icon { flex: none; font-size: 15px; }
+.marquee .mq-window { flex: 1; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); }
+.marquee-track { display: inline-block; white-space: nowrap; padding-left: 100%; font-size: 14px; font-weight: 600; color: var(--text); animation: marquee var(--dur, 20s) linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.header-spacer { flex: 1; }
+@media (max-width: 700px) {
+  header { height: auto; flex-wrap: wrap; row-gap: 8px; padding: 10px 14px; }
+  header h1 { font-size: 17px; }
+  .marquee { order: 3; flex: 1 0 100%; margin: 0; height: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .marquee-track { padding-left: 0; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } }
+
+/* ---------- thanh "có bản cập nhật" ---------- */
+.update-bar { position: fixed; top: 66px; white-space: nowrap; left: 50%; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 12px; background: #2e77d0; color: #fff; font-weight: 600; font-size: 14px; padding: 8px 8px 8px 18px; border-radius: 999px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.update-bar button.primary { background: #fff; color: #000; padding: 6px 14px; }
+.update-bar button.icon { color: #fff; }
+@media (max-width: 700px) { .update-bar { top: auto; bottom: 84px; font-size: 13px; } }
 
 /* ---------- khung ---------- */
 .panel { background: var(--panel); border-radius: var(--radius); padding: 16px; }

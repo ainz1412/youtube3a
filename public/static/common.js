@@ -1,4 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
+// Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
+const APP_VERSION = '2026-11-09.5';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -305,6 +307,32 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
   };
 }
 
+// Website vừa được cập nhật mà tab này còn bản cũ -> mời tải lại (không tự tải lại để không ngắt nhạc đang phát)
+function showUpdateBar() {
+  if ($('#updateBar')) return;
+  document.body.append(el('div', { id: 'updateBar', class: 'update-bar' },
+    'Website vừa được cập nhật.',
+    el('button', { class: 'primary', onclick: () => location.reload() }, 'Tải lại'),
+    el('button', { class: 'icon', title: 'Để sau', onclick: () => $('#updateBar').remove() }, '✕')));
+}
+
+// Thông báo chạy ngang trên đầu trang
+function drawNotice(notice) {
+  const box = $('#marquee');
+  if (!box) return;
+  const text = notice && notice.text ? notice.text : '';
+  box.classList.toggle('hidden', !text);
+  const track = $('#marqueeTrack');
+  if (track.dataset.text === text) return;
+  track.dataset.text = text;
+  track.textContent = text;
+  requestAnimationFrame(() => {
+    const dist = box.clientWidth + track.scrollWidth;  // quãng đường chữ chạy (px)
+    track.style.setProperty('--dur', Math.max(8, dist / 80) + 's');  // ~80px mỗi giây
+    track.style.animation = 'none'; void track.offsetWidth; track.style.animation = '';
+  });
+}
+
 // Kết nối WebSocket thời gian thực, tự nối lại khi rớt mạng
 function connectWS(getParams, handlers) {
   let ws, timer, ping, delay = 1000, closed = false;
@@ -320,7 +348,11 @@ function connectWS(getParams, handlers) {
     };
     ws.onmessage = (e) => {
       if (e.data === 'pong') return;
-      try { const m = JSON.parse(e.data); handlers[m.type] && handlers[m.type](m.data); } catch (err) {}
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === 'hello') { if (m.data && m.data.version && m.data.version !== APP_VERSION) showUpdateBar(); return; }
+        handlers[m.type] && handlers[m.type](m.data);
+      } catch (err) {}
     };
     ws.onclose = () => {
       clearInterval(ping);

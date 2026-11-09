@@ -50,6 +50,7 @@
 <header>
   <div class="logo">♪</div>
   <h1>Chillwith3A</h1>
+  <div class="marquee hidden" id="marquee" title="Thông báo từ Admin"><span class="mq-icon">📢</span><div class="mq-window"><span class="marquee-track" id="marqueeTrack"></span></div></div>
   <div class="me"><span class="dot" id="conn" title="Kết nối"></span><b id="meName" style="color:var(--text)">?</b>&nbsp;&nbsp;<a href="#" id="rename">Đổi tên</a></div>
 </header>
 
@@ -205,6 +206,7 @@
     });
 
     drawSearchQuota(s.search);
+    drawNotice(s.notice);
     $('#onlineCount').textContent = `${s.online.length} người online`;
     $('#online').textContent = s.online.length ? s.online.join(', ') : '';
     $('#online').title = s.online.join(', ');

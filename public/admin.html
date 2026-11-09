@@ -39,6 +39,8 @@
   .progress div { height: 100%; background: #fff; width: 0; transition: width .5s linear; }
   .progress:hover div { background: var(--green); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } #left { overflow: visible; } .chat .msgs { max-height: 40vh; } #queue { max-height: 40vh; } }
+  .notice-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .notice-form input { flex: 1; min-width: 220px; }
   /* Hạn mức YouTube API */
   #quotaPanel h2 .tools { margin-left: auto; display: flex; gap: 2px; align-items: center; }
   .qstatus { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: rgba(30,215,96,.15); color: var(--green); }
@@ -71,6 +73,7 @@
   <div class="logo">♪</div>
   <h1>Chillwith3A · <span style="color:var(--admin)">Admin</span></h1>
   <span id="modeBadge">Điều khiển từ xa</span>
+  <div class="marquee hidden" id="marquee" title="Thông báo từ Admin"><span class="mq-icon">📢</span><div class="mq-window"><span class="marquee-track" id="marqueeTrack"></span></div></div>
   <div class="me"><span class="dot" id="conn"></span><span id="hdrUrl" style="color:var(--text);font-weight:600"></span>
     · <a href="#" id="logout" style="color:var(--muted)">đăng xuất</a></div>
 </header>
@@ -123,6 +126,16 @@
         <div id="pinBox" class="hidden" style="margin-top:8px"><span class="muted small">Mã phòng:</span> <span class="pin" id="pinText"></span></div>
         <div class="muted small" style="margin-top:6px">Dùng Wi-Fi nào hay 4G đều vào được.</div>
       </div>
+    </section>
+
+    <section class="panel" id="noticePanel">
+      <h2>Thông báo chạy chữ</h2>
+      <form id="noticeForm" class="notice-form">
+        <input type="text" id="noticeInput" maxlength="300" placeholder="Ví dụ: Mỗi người tối đa 3 bài, sau 22h ưu tiên nhạc chill 🎧" autocomplete="off">
+        <button class="primary" type="submit">Đăng</button>
+        <button type="button" class="ghost" id="noticeOff">Tắt</button>
+      </form>
+      <div class="muted small" id="noticeInfo" style="margin-top:8px">Đang tắt</div>
     </section>
 
     <section class="panel" id="quotaPanel">
@@ -554,8 +567,27 @@
     finally { btn.disabled = false; btn.textContent = 'Lưu'; }
   });
 
+  // ---------- Thông báo chạy chữ ----------
+  let noticeLoaded = false;
+  function drawNoticeAdmin(n) {
+    drawNotice(n);
+    $('#noticeInfo').textContent = n ? `Đang hiện cho mọi người · đăng lúc ${fmtTime(n.at)}` : 'Đang tắt. Nhập nội dung rồi bấm Đăng để hiện ở đầu trang của mọi người.';
+    if (!noticeLoaded || document.activeElement !== $('#noticeInput')) { if (!noticeLoaded) $('#noticeInput').value = n ? n.text : ''; noticeLoaded = true; }
+    $('#noticeOff').classList.toggle('hidden', !n);
+  }
+  async function saveNotice(text) {
+    try {
+      const r = await api('/api/host/notice', { pw, text });
+      if (!r.notice) $('#noticeInput').value = '';
+      toast(r.notice ? '📢 Đã đăng thông báo' : 'Đã tắt thông báo');
+    } catch (e) { toast(e.message, true); }
+  }
+  $('#noticeForm').addEventListener('submit', (e) => { e.preventDefault(); saveNotice($('#noticeInput').value); });
+  $('#noticeOff').addEventListener('click', () => saveNotice(''));
+
   function render(s) {
     state = s;
+    drawNoticeAdmin(s.notice);
     const sk = s.search ? s.search.used + '|' + s.search.available + '|' + s.search.limit : '';
     if (sk !== lastSearchUsed) { const first = lastSearchUsed === null; lastSearchUsed = sk; if (!first && loggedIn) loadQuota(); }
     const now = $('#now');
