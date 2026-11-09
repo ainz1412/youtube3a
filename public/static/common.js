@@ -64,10 +64,55 @@ function songRow(s, { num, mine, actions = [] } = {}) {
     el('div', { class: 'meta' },
       el('div', { class: 'title', title: s.title }, s.title),
       el('div', { class: 'sub' },
-        fmtDur(s.duration), ' · ', s.channel,
-        s.addedBy ? ' · ' : null,
-        s.addedBy ? el('span', { class: 'badge' + (mine ? ' me' : '') }, s.addedBy) : null)),
+        s.addedBy ? el('span', { class: 'badge' + (mine ? ' me' : '') }, s.addedBy) : null,
+        s.addedBy ? ' ' : null,
+        s.channel)),
+    el('div', { class: 'dur' }, fmtDur(s.duration)),
     actions.length ? el('div', { class: 'actions' }, actions) : null);
+}
+
+// Lấy màu chủ đạo của ảnh bìa để tô nền khung "Đang phát".
+// Ảnh được tải riêng (crossOrigin) để không ảnh hưởng ảnh đang hiển thị nếu bị chặn CORS.
+const tintCache = new Map();
+function artTint(url) {
+  if (!url) return Promise.resolve(null);
+  if (tintCache.has(url)) return Promise.resolve(tintCache.get(url));
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 24; c.height = 14;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(im, 0, 0, 24, 14);
+        const d = x.getImageData(0, 0, 24, 14).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const R = d[i], G = d[i + 1], B = d[i + 2];
+          const sat = Math.max(R, G, B) - Math.min(R, G, B);
+          const lum = (R + G + B) / 3;
+          if (lum < 18 || lum > 240) continue;          // bỏ viền đen / trắng
+          const w = 1 + sat / 24;                         // ưu tiên màu rực
+          r += R * w; g += G * w; b += B * w; n += w;
+        }
+        if (!n) return resolve(null);
+        let rgb = [r / n, g / n, b / n];
+        const max = Math.max(...rgb);
+        const k = max > 150 ? 150 / max : max < 70 ? 70 / Math.max(max, 1) : 1; // giữ độ sáng vừa phải để chữ trắng dễ đọc
+        rgb = rgb.map((v) => Math.round(v * k));
+        tintCache.set(url, rgb);
+        resolve(rgb);
+      } catch (e) { resolve(null); }
+    };
+    im.onerror = () => resolve(null);
+    im.src = url;
+  });
+}
+function applyNowTint(panel, url) {
+  artTint(url).then((rgb) => {
+    panel.style.setProperty('--np-tint', (rgb || [83, 83, 83]).join(', '));
+  });
 }
 
 // ---------- Chat thời gian thực ----------

@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0f0f12">
+<meta name="theme-color" content="#000000">
 <title>Jukebox – Chọn nhạc cho cả phòng</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎶</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <style>
   main { display: grid; gap: 14px; padding: 14px; margin: 0 auto; max-width: 1900px; grid-template-columns: minmax(0, 1fr); }
   #mid { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .searchbar { display: flex; gap: 8px; }
   .searchbar input { flex: 1; }
-  .online { font-size: 12px; color: var(--muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #chatPanel h2 .badge { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .online { font-size: 12px; color: var(--subtle); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #chatPanel h2 .badge { margin-left: auto; font-weight: 500; color: var(--muted); }
   /* Máy tính bảng / laptop nhỏ: 2 cột, chat nằm dưới hàng chờ */
   @media (min-width: 900px) {
     main { height: calc(100vh - 57px); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -44,18 +47,18 @@
 <header>
   <div class="logo">♪</div>
   <h1>Jukebox</h1>
-  <div class="me"><span class="dot" id="conn" title="Kết nối"></span>Bạn là <b id="meName">?</b> · <a href="#" id="rename" style="color:var(--accent2)">đổi tên</a></div>
+  <div class="me"><span class="dot" id="conn" title="Kết nối"></span><b id="meName" style="color:var(--text)">?</b>&nbsp;&nbsp;<a href="#" id="rename">Đổi tên</a></div>
 </header>
 
 <main>
   <section class="panel" id="addPanel">
     <h2>Thêm bài hát</h2>
     <div class="tabs">
-      <button class="active" data-tab="search">🔍 Tìm trên YouTube</button>
-      <button data-tab="link">🔗 Dán link</button>
+      <button class="active" data-tab="search">Tìm trên YouTube</button>
+      <button data-tab="link">Dán link YouTube</button>
     </div>
     <form class="searchbar" id="searchForm">
-      <input type="text" id="searchInput" placeholder="Tên bài hát, ca sĩ..." autocomplete="off" enterkeyhint="search">
+      <input type="text" id="searchInput" placeholder="Bạn muốn nghe gì?" autocomplete="off" enterkeyhint="search">
       <button class="primary" type="submit">Tìm</button>
     </form>
     <form class="searchbar hidden" id="linkForm">
@@ -63,7 +66,7 @@
       <button class="primary" type="submit">Thêm</button>
     </form>
     <div class="scroll" id="results" style="margin-top:10px">
-      <div class="empty">Tìm một bài hát rồi bấm <b>+ Thêm</b> để xếp vào hàng chờ.</div>
+      <div class="empty">Tìm một bài rồi bấm <b>Thêm</b> để xếp vào hàng chờ.</div>
     </div>
   </section>
 
@@ -80,7 +83,7 @@
   </div>
 
   <section class="panel chat" id="chatPanel">
-    <h2>💬 Chat chung <span class="badge" id="onlineCount">0 online</span></h2>
+    <h2>Chat chung <span class="badge" id="onlineCount">0 online</span></h2>
     <div class="msgs"></div>
     <div class="typing"></div>
     <form>
@@ -93,12 +96,13 @@
 
 <div class="overlay hidden" id="nameModal">
   <form class="panel" id="nameForm">
-    <h2>👋 Chào bạn!</h2>
-    <p class="muted small">Nhập tên để mọi người biết ai đã chọn bài nhé.</p>
-    <input type="text" id="nameInput" maxlength="24" placeholder="Tên của bạn" autocomplete="off" required>
+    <h2>Vào phòng nghe nhạc</h2>
+    <p class="muted small" style="margin:0 0 16px">Tên của bạn sẽ hiện cạnh những bài bạn chọn và trong chat.</p>
+    <label for="nameInput" style="margin-top:0">Tên của bạn</label>
+    <input type="text" id="nameInput" maxlength="24" placeholder="Ví dụ: Minh" autocomplete="off" required>
     <div id="pinWrap" class="hidden">
-      <label for="pinInput">Mã phòng (xem trên màn hình của Admin)</label>
-      <input type="text" id="pinInput" maxlength="32" placeholder="Mã phòng" autocomplete="off" inputmode="numeric">
+      <label for="pinInput">Mã phòng</label>
+      <input type="text" id="pinInput" maxlength="32" placeholder="Xem trên màn hình của Admin" autocomplete="off" inputmode="numeric">
     </div>
     <div class="err-text" id="nameErr"></div>
     <button class="primary" type="submit" style="width:100%;margin-top:4px">Vào phòng</button>
@@ -177,16 +181,15 @@
         el('img', { src: n.thumb, alt: '' }),
         el('div', { style: 'min-width:0' },
           el('div', { class: 'title' }, n.title),
-          el('div', { class: 'muted small' }, n.channel, ' · ', fmtDur(n.duration)),
-          el('div', { class: 'small', style: 'margin-top:4px' }, 'Chọn bởi ',
-            el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy),
-            s.paused ? el('span', { class: 'muted' }, ' · ⏸ tạm dừng') : null))));
-    } else now.append(el('div', { class: 'empty' }, 'Chưa có bài nào. Hãy là người đầu tiên!'));
+          el('div', { class: 'np-sub' }, n.channel, ' • ', fmtDur(n.duration), s.paused ? ' • Tạm dừng' : ''),
+          el('div', { class: 'np-by' }, 'Chọn bởi ', el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy)))));
+      applyNowTint($('#nowPanel'), n.thumb);
+    } else { now.append(el('div', { class: 'empty' }, 'Chưa có bài nào. Hãy là người đầu tiên!')); applyNowTint($('#nowPanel'), null); }
 
     const q = $('#queue');
     q.innerHTML = '';
     $('#qCount').textContent = s.queue.length;
-    if (!s.queue.length) q.append(el('div', { class: 'empty' }, 'Hàng chờ đang trống.'));
+    if (!s.queue.length) q.append(el('div', { class: 'empty' }, 'Chưa có bài nào chờ. Tìm một bài để thêm vào.'));
     s.queue.forEach((song, i) => {
       const mine = song.owner === myOwner;
       q.append(songRow(song, {
@@ -195,7 +198,7 @@
       }));
     });
 
-    $('#onlineCount').textContent = `🟢 ${s.online.length} online`;
+    $('#onlineCount').textContent = `${s.online.length} người online`;
     $('#online').textContent = s.online.length ? s.online.join(', ') : '';
     $('#online').title = s.online.join(', ');
     refreshResultButtons();
@@ -242,7 +245,7 @@
     box.innerHTML = '';
     if (!lastResults.length) return box.append(el('div', { class: 'empty' }, 'Không có kết quả.'));
     for (const v of lastResults) {
-      const btn = el('button', { 'data-vid': v.videoId, onclick: () => addSong({ videoId: v.videoId }, btn) });
+      const btn = el('button', { class: 'ghost', 'data-vid': v.videoId, onclick: () => addSong({ videoId: v.videoId }, btn) });
       box.append(songRow(v, { actions: [btn] }));
     }
     refreshResultButtons();
@@ -252,8 +255,8 @@
       if (b.dataset.busy) return;
       const added = inList(b.dataset.vid);
       b.disabled = added;
-      b.className = added ? '' : 'primary';
-      b.textContent = added ? '✓ Đã có' : '+ Thêm';
+      b.className = added ? 'added' : 'ghost';
+      b.textContent = added ? '✓ Đã có' : 'Thêm';
     });
   }
 
