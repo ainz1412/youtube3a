@@ -1,0 +1,60 @@
+# 🎶 YT Jukebox – Phòng nghe nhạc chung (Cloudflare)
+
+Website cố định: mọi người vào chọn bài YouTube, chat chung. Máy tính của chủ phòng mở trang `/host` để phát nhạc ra loa bằng tài khoản YouTube Premium.
+
+- `https://youtube3a.<tên-bạn>.workers.dev/` dành cho **khách**: nhập tên (và mã phòng nếu có), tìm bài, dán link, xếp hàng chờ, chat.
+- `https://youtube3a.<tên-bạn>.workers.dev/host` dành cho **máy phát**: cần mật khẩu. Trang này phát nhạc, điều khiển hàng chờ và hiện mã QR.
+
+Toàn bộ chạy trên gói **miễn phí** của Cloudflare Workers và Durable Objects.
+
+## Deploy lần đầu (khoảng 5 phút)
+
+1. Vào https://dash.cloudflare.com và đăng nhập (tạo tài khoản miễn phí nếu chưa có).
+2. Mở **Workers & Pages** → **Create application** → **Import a repository** (Continue with GitHub).
+3. Cho Cloudflare truy cập GitHub, rồi chọn repo **youtube3a**.
+4. Giữ nguyên các thiết lập:
+   - Project name: `youtube3a` (phải trùng với `name` trong `wrangler.jsonc`)
+   - Build command: *(để trống)*
+   - Deploy command: `npx wrangler deploy`
+5. Bấm **Deploy** và đợi khoảng 1 phút.
+6. Vào Worker **youtube3a** → **Settings** → **Variables and Secrets** → **Add**. Thêm các biến sau, mỗi biến chọn loại **Secret**:
+
+   | Tên | Giá trị |
+   |---|---|
+   | `YOUTUBE_API_KEY` | Key YouTube Data API v3 |
+   | `HOST_PASSWORD` | Mật khẩu để mở trang `/host` (tự đặt) |
+   | `ROOM_PIN` | *(Không bắt buộc)* Mã phòng khách phải nhập, ví dụ `2468`. Để trống thì ai có link cũng vào được |
+
+   Bấm **Deploy** để lưu.
+7. Mở `https://youtube3a.<tên-bạn>.workers.dev/host` trên máy tính, nhập mật khẩu rồi bấm **▶ Bắt đầu phát**.
+
+Từ đó về sau, mỗi lần có commit mới lên nhánh `main`, Cloudflare tự deploy lại.
+
+## Dùng hằng ngày
+1. Máy tính: mở Chrome/Edge **đã đăng nhập YouTube Premium** → vào `/host` → bấm **Bắt đầu phát**. Kết nối loa Bluetooth như bình thường.
+2. Mọi người quét mã QR trên màn hình, dùng Wi-Fi nào hay 4G đều được. Nếu có mã phòng, mã QR đã kèm sẵn nên không cần gõ.
+3. Để tab `/host` mở suốt buổi. Có thể thu nhỏ cửa sổ.
+
+Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở lại vẫn còn.
+
+## Cấu hình thêm (trong `wrangler.jsonc` → `vars`)
+| Biến | Ý nghĩa | Mặc định |
+|---|---|---|
+| `MAX_SONGS_PER_USER` | Số bài tối đa mỗi người xếp chờ cùng lúc (0 = không giới hạn) | 3 |
+| `MAX_DURATION_MIN` | Video dài tối đa bao nhiêu phút (0 = không giới hạn) | 15 |
+| `MAX_SEARCHES_PER_DAY` | Giới hạn lượt tìm kiếm mỗi ngày để không vượt hạn mức miễn phí của YouTube (0 = không giới hạn) | 90 |
+
+## Lưu ý
+- **Hạn mức YouTube API:** mức miễn phí là 10.000 đơn vị/ngày, mỗi lượt tìm tốn khoảng 101 đơn vị, tức khoảng 98 lượt/ngày. Kết quả tìm giống nhau được lưu tạm 1 giờ. Thêm bằng link chỉ tốn 1 đơn vị và không bị giới hạn. Hạn mức reset lúc 14–15h giờ Việt Nam.
+- **Bảo mật key:** trong Google Cloud Console → Credentials, giới hạn key chỉ dùng cho *YouTube Data API v3*. Key nằm trong Secret của Cloudflare, khách không nhìn thấy, và không bao giờ được đưa lên GitHub.
+- **Video bị chặn nhúng:** một số MV không cho phát ngoài youtube.com. Ô tìm kiếm đã tự lọc bớt; nếu vẫn gặp, máy phát tự chuyển bài.
+- **Chạy thử trên máy:** đổi tên `.dev.vars.example` thành `.dev.vars`, điền key, rồi chạy `npx wrangler dev`.
+
+## Cấu trúc
+```
+src/worker.js        Worker + Durable Object "Room" (hàng chờ, chat, WebSocket, gọi YouTube API)
+public/index.html    Trang khách
+public/host.html     Trang máy phát (YouTube IFrame Player)
+public/static/       CSS + JS dùng chung
+wrangler.jsonc       Cấu hình Cloudflare
+```

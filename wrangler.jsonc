@@ -1,0 +1,25 @@
+{
+  "name": "youtube3a",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-10-01",
+  // Trang tĩnh (index.html, host.html, css, js)
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  // Phòng nhạc: 1 Durable Object giữ hàng chờ + chat + kết nối WebSocket
+  "durable_objects": {
+    "bindings": [{ "name": "ROOM", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  // Cấu hình không bí mật. Các biến bí mật (YOUTUBE_API_KEY, HOST_PASSWORD, ROOM_PIN)
+  // đặt trong Cloudflare Dashboard → Worker → Settings → Variables and Secrets.
+  "vars": {
+    "MAX_SONGS_PER_USER": "3",
+    "MAX_DURATION_MIN": "15",
+    "MAX_SEARCHES_PER_DAY": "90"
+  },
+  "keep_vars": true,
+  "observability": { "enabled": true }
+}

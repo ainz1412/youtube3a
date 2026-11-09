@@ -1,0 +1,13 @@
+{
+  "name": "youtube3a",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Phòng nghe nhạc chung: mọi người chọn bài YouTube, máy chủ phát. Chạy trên Cloudflare Workers.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

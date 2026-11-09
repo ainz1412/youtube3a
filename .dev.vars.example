@@ -1,0 +1,4 @@
+# Chỉ dùng khi chạy thử trên máy bằng "npx wrangler dev". Đổi tên thành .dev.vars
+YOUTUBE_API_KEY=your-key-here
+HOST_PASSWORD=doi-mat-khau-nay
+ROOM_PIN=
