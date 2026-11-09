@@ -295,7 +295,18 @@ export class Room extends DurableObject {
           case 'ended': if (s.nowPlaying && body.id === s.nowPlaying.id) this.playNext(); break;
           case 'error':
             if (s.nowPlaying && body.id === s.nowPlaying.id) {
-              this.systemMsg(`⚠️ Không phát được "${s.nowPlaying.title}", chuyển bài.`);
+              const reasons = {
+                2: 'mã video không hợp lệ',
+                5: 'lỗi trình phát của trình duyệt',
+                100: 'video đã bị xóa hoặc để riêng tư',
+                101: 'chủ video không cho phát trên website khác',
+                150: 'chủ video không cho phát trên website khác',
+                152: 'video bị giới hạn khu vực hoặc độ tuổi',
+                153: 'YouTube từ chối trình phát nhúng',
+              };
+              const code = Number(body.code);
+              const why = reasons[code] ? `${reasons[code]}, mã ${code}` : (Number.isFinite(code) ? `mã lỗi ${code}` : 'không rõ lý do');
+              this.systemMsg(`⚠️ Không phát được "${s.nowPlaying.title}" (${why}), chuyển bài.`);
               this.playNext();
             }
             break;

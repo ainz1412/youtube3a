@@ -122,7 +122,7 @@
     onTyping: () => hostConn && hostConn.send({ type: 'typing' }),
   });
   let player = null, playerReady = false, started = false, loggedIn = false;
-  let state = null, loadedId = null;
+  let state = null, loadedId = null, retriedId = null;
 
   // ---- Đăng nhập ----
   async function login(p) {
@@ -171,7 +171,15 @@
         },
         onError: (e) => {
           console.warn('YT error', e.data);
-          if (loggedIn && state?.nowPlaying) hapi('/api/host/error', { id: state.nowPlaying.id });
+          if (!loggedIn || !state?.nowPlaying) return;
+          const n = state.nowPlaying;
+          // Lỗi 5 (trình phát HTML5) thường chỉ tạm thời: thử phát lại 1 lần trước khi bỏ qua bài
+          if (e.data === 5 && retriedId !== n.id) {
+            retriedId = n.id;
+            setTimeout(() => { if (state?.nowPlaying?.id === n.id) player.loadVideoById(n.videoId); }, 1500);
+            return;
+          }
+          hapi('/api/host/error', { id: n.id, code: e.data });
         },
       },
     });
