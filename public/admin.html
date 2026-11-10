@@ -406,7 +406,7 @@
     if (!n) { if (loadedId) { player.stopVideo(); loadedId = null; } endTabMode(); return; }
     if (n.id !== loadedId) {
       loadedId = n.id;
-      if (noEmbed.has(n.videoId)) { startTabMode(n); return; }   // đã biết bài này bị chặn nhúng
+      if (n.noEmbed || noEmbed.has(n.videoId)) { startTabMode(n); return; }   // bài bị chặn nhúng -> mở thẳng youtube.com
       if (tabMode) endTabMode({ close: false });                // bài mới: thử phát nhúng trước
       player.loadVideoById(n.videoId);
     }

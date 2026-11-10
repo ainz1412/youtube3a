@@ -71,7 +71,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-10.3';
+const APP_VERSION = '2026-11-10.4';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -301,7 +301,7 @@ export class Room extends DurableObject {
     const c = this.cfg;
     if (!this.searchInfo().available) { const e = new Error(SEARCH_EXHAUSTED_MSG); e.status = 429; throw e; }
 
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=12&q=${encodeURIComponent(q)}&key=${c.apiKey}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=12&q=${encodeURIComponent(q)}&key=${c.apiKey}`;
     const j = await this.ytCall('search', url);
     const ids = (j.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
     const items = ids.length ? (await this.ytVideos(ids)).filter((v) => !v.live) : [];
@@ -371,7 +371,6 @@ export class Room extends DurableObject {
 
         const [v] = await this.ytVideos([videoId]);
         if (!v) return json({ error: 'Không tìm thấy video' }, 404);
-        if (!v.embeddable) return json({ error: 'Video này bị chủ sở hữu chặn phát ngoài YouTube' }, 400);
         if (v.live) return json({ error: 'Không hỗ trợ video đang livestream' }, 400);
         if (c.maxDur && v.duration > c.maxDur * 60) return json({ error: `Video dài quá ${c.maxDur} phút` }, 400);
         if (dupe()) return json({ error: 'Bài này đã có trong danh sách rồi' }, 409);
@@ -379,9 +378,11 @@ export class Room extends DurableObject {
         const song = {
           id: crypto.randomUUID(), videoId: v.videoId, title: v.title, channel: v.channel,
           thumb: v.thumb, duration: v.duration, addedBy: name, owner, addedAt: Date.now(),
+          // Chủ video không cho phát nhúng -> máy phát sẽ mở bài này trên youtube.com
+          ...(v.embeddable ? {} : { noEmbed: true }),
         };
         this.state.queue.push(song);
-        this.systemMsg(`🎵 ${name} đã thêm: ${song.title}`);
+        this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}`);
         if (!this.state.nowPlaying) this.playNext(); else this.changed();
         return json({ ok: true, song });
       }

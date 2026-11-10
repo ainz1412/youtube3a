@@ -111,6 +111,7 @@ header .me a:hover { text-decoration: underline; }
 
 .badge { display: inline-block; background: rgba(255,255,255,.1); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; color: var(--text); }
 .badge.me { background: var(--green); color: #000; }
+.badge.yt { background: rgba(255, 82, 82, .16); color: #ff8a8a; cursor: help; }
 
 /* ---------- Đang phát (điểm nhấn: màu theo ảnh bìa) ---------- */
 #nowPanel {
