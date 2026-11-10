@@ -75,7 +75,7 @@
     <div class="scroll" id="results" style="margin-top:10px">
       <div class="empty">Tìm một bài rồi bấm <b>Thêm</b> để xếp vào hàng chờ.</div>
     </div>
-    <div class="legal-links">Sử dụng YouTube API Services · <a href="/terms">Điều khoản</a> · <a href="/privacy">Quyền riêng tư</a></div>
+    <div class="legal-links">Video và dữ liệu từ <a href="https://www.youtube.com" target="_blank" rel="noopener">YouTube</a> · Sử dụng YouTube API Services · <a href="/terms">Điều khoản</a> · <a href="/privacy">Quyền riêng tư</a></div>
   </section>
 
   <div id="mid">
@@ -191,7 +191,7 @@
       now.append(el('div', { class: 'now' },
         el('img', { src: n.thumb, alt: '' }),
         el('div', { style: 'min-width:0' },
-          el('div', { class: 'title' }, n.title),
+          el('a', { class: 'title', href: 'https://www.youtube.com/watch?v=' + n.videoId, target: '_blank', rel: 'noopener', title: 'Xem trên YouTube', style: 'color:inherit;text-decoration:none' }, n.title),
           el('div', { class: 'np-sub' }, n.channel, ' • ', fmtDur(n.duration), s.paused ? ' • Tạm dừng' : ''),
           el('div', { class: 'np-by' }, 'Chọn bởi ', el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy)))));
       applyNowTint($('#nowPanel'), n.thumb);

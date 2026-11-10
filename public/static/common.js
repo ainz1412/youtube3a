@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-10.2';
+const APP_VERSION = '2026-11-10.3';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -64,7 +64,7 @@ function songRow(s, { num, mine, actions = [] } = {}) {
     num != null ? el('div', { class: 'num' }, String(num)) : null,
     el('img', { src: s.thumb || '', alt: '', loading: 'lazy' }),
     el('div', { class: 'meta' },
-      el('div', { class: 'title', title: s.title }, s.title),
+      el('a', { class: 'title', title: s.title + ' — xem trên YouTube', href: 'https://www.youtube.com/watch?v=' + s.videoId, target: '_blank', rel: 'noopener' }, s.title),
       el('div', { class: 'sub' },
         s.addedBy ? el('span', { class: 'badge' + (mine ? ' me' : '') }, s.addedBy) : null,
         s.addedBy ? ' ' : null,

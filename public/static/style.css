@@ -101,7 +101,8 @@ header .me a:hover { text-decoration: underline; }
 .song:hover { background: var(--hover); }
 .song img { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; flex: none; background: #000; }
 .song .meta { min-width: 0; flex: 1; }
-.song .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--text); }
+.song .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--text); text-decoration: none; }
+.song .title:hover { text-decoration: underline; }
 .song .sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .song .num { width: 22px; text-align: right; color: var(--muted); font-size: 14px; flex: none; font-variant-numeric: tabular-nums; }
 .song .dur { color: var(--muted); font-size: 13px; flex: none; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
