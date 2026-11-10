@@ -52,6 +52,11 @@ Hàng chờ và chat được lưu trên Cloudflare, nên tắt máy rồi mở 
 - Trên điện thoại / laptop khác: mở `/admin` → tự thành **Điều khiển từ xa**: tạm dừng, phát tiếp, âm lượng, bấm thanh tiến trình để tua, chuyển bài, sắp xếp hàng chờ, chat… đều tác động lên máy phát.
 - Nếu bấm phát trên thiết bị thứ hai, trang hỏi có chuyển máy phát sang thiết bị này không; máy cũ tự dừng nên không bao giờ có 2 nơi cùng phát.
 
+## Bài bị chủ video chặn phát nhúng (lỗi 150)
+Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi gặp lỗi này, máy phát **tự mở bài trong một cửa sổ youtube.com** (vẫn dùng YouTube Premium của máy đó), đếm ngược theo thời lượng bài rồi tự chuyển bài; bài sau phát nhúng được thì cửa sổ tự đóng. Website nhớ các bài này để lần sau mở thẳng cửa sổ YouTube.
+- Lần đầu Chrome có thể chặn cửa sổ bật lên: bấm **Mở cửa sổ YouTube**, rồi chọn **Luôn cho phép cửa sổ bật lên** của trang ở cuối thanh địa chỉ.
+- Khi đang phát qua cửa sổ YouTube, nút Tạm dừng chỉ dừng đồng hồ đếm; hãy tạm dừng cả trong cửa sổ YouTube.
+
 ## Thông báo chạy chữ
 Trang `/admin` → khung **Thông báo chạy chữ**: nhập nội dung → **Đăng**. Dòng chữ chạy ngang liên tục ở đầu trang của mọi người (rê chuột vào để dừng). Bấm **Tắt** để ẩn.
 

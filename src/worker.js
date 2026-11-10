@@ -71,7 +71,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-09.5';
+const APP_VERSION = '2026-11-10.1';
 
 // ---------- Phòng nhạc ----------
 export class Room extends DurableObject {
@@ -468,6 +468,12 @@ export class Room extends DurableObject {
           }
           case 'clear': s.queue = []; this.changed(); break;
           case 'quota': return json(this.quotaInfo());
+          case 'tabplay':
+            if (this.fromSpeaker(body.deviceId) && s.nowPlaying && body.id === s.nowPlaying.id && this.tabNoted !== body.id) {
+              this.tabNoted = body.id;
+              this.systemMsg(`↗️ "${s.nowPlaying.title}" không cho phát nhúng, đang phát qua cửa sổ YouTube trên máy phát.`);
+            }
+            break;
           case 'notice': {
             const text = String(body.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
             this.notice = text ? { text, at: Date.now() } : null;

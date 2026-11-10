@@ -94,6 +94,14 @@
           <p class="muted small" style="margin:0 0 18px">Nhạc đang phát trên <b id="spkName" style="color:var(--text)"></b> <span id="spkOnline"></span><br>Tạm dừng, âm lượng và tua bài bên dưới sẽ điều khiển thiết bị đó.</p>
           <button class="ghost" id="takeOver">Chuyển sang phát trên thiết bị này</button>
         </div>
+        <div id="ovTab" class="hidden">
+          <div class="ov-icon">↗️</div>
+          <p class="ov-title">Đang phát trong cửa sổ YouTube</p>
+          <p class="muted small" style="margin:0 0 6px;max-width:460px">Chủ video không cho phát trên website khác, nên bài này được mở thẳng trên youtube.com (vẫn dùng YouTube Premium của máy này). Hết bài, website tự chuyển bài và đóng cửa sổ.</p>
+          <p class="small" id="tabCountdown" style="margin:0 0 14px;color:var(--text);font-weight:600"></p>
+          <p class="small hidden" id="tabBlocked" style="margin:0 0 14px;color:var(--admin);max-width:460px">Trình duyệt đã chặn cửa sổ bật lên. Bấm nút bên dưới để mở, rồi chọn <b>Luôn cho phép cửa sổ bật lên</b> ở biểu tượng cuối thanh địa chỉ để lần sau tự mở.</p>
+          <button class="primary" id="tabOpen">Mở cửa sổ YouTube</button>
+        </div>
         <div id="ovConflict" class="hidden">
           <p class="ov-title">Nhạc đang phát trên <span id="cfName"></span></p>
           <p class="muted small" style="margin:0 0 18px">Chuyển sang phát trên thiết bị này? Thiết bị kia sẽ tự dừng.</p>
@@ -294,7 +302,7 @@
           if (!controlling()) return;
           if (e.data === YT.PlayerState.ENDED && state?.nowPlaying) hapi('/api/host/ended', { id: state.nowPlaying.id, deviceId });
           if (e.data === YT.PlayerState.PAUSED) { setPPLabel(true); if (!state?.paused) hapi('/api/host/paused', { paused: true, deviceId }); }
-          if (e.data === YT.PlayerState.PLAYING) { lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false, deviceId }); }
+          if (e.data === YT.PlayerState.PLAYING) { if (!tabMode) closeYtWindow(); lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false, deviceId }); }
           reportStatus();
         },
         onError: (e) => {
@@ -307,6 +315,8 @@
             setTimeout(() => { if (state?.nowPlaying?.id === n.id) player.loadVideoById(n.videoId); }, 1500);
             return;
           }
+          // Chủ video chỉ cho xem trên youtube.com -> mở bài trong cửa sổ YouTube thay vì bỏ qua
+          if (e.data === 101 || e.data === 150) { if (!tabMode || tabMode.id !== n.id) startTabMode(n); return; }
           hapi('/api/host/error', { id: n.id, code: e.data, deviceId });
         },
       },
@@ -333,20 +343,82 @@
     }
   }
 
+  // ---- Phát qua cửa sổ youtube.com khi chủ video chặn phát nhúng (lỗi 101 / 150) ----
+  const NOEMBED_KEY = 'jb_noembed';
+  const noEmbed = new Set(JSON.parse(localStorage.getItem(NOEMBED_KEY) || '[]'));
+  function rememberNoEmbed(videoId) {
+    noEmbed.add(videoId);
+    localStorage.setItem(NOEMBED_KEY, JSON.stringify([...noEmbed].slice(-300)));
+  }
+  let ytWin = null;   // cửa sổ youtube.com do trang này mở
+  let tabMode = null; // { id, videoId, duration, start, pausedAt, pausedMs }
+  const tabElapsed = () => !tabMode ? 0 : ((tabMode.pausedAt || Date.now()) - tabMode.start - tabMode.pausedMs) / 1000;
+  const ytUrl = (videoId) => `https://www.youtube.com/watch?v=${videoId}`;
+  function openYtWindow(fromClick) {
+    if (!tabMode) return;
+    const url = ytUrl(tabMode.videoId);
+    let ok = false;
+    // Cửa sổ đã mở từ trước: chỉ cần chuyển địa chỉ, không cần quyền mở cửa sổ bật lên
+    if (ytWin && !ytWin.closed) { try { ytWin.location.href = url; ok = true; } catch (e) {} }
+    if (!ok) {
+      ytWin = window.open(url, 'chillwith3a_youtube', 'width=960,height=600');
+      ok = !!ytWin;
+    }
+    if (ok && fromClick) { tabMode.start = Date.now(); tabMode.pausedMs = 0; tabMode.pausedAt = null; }
+    $('#tabBlocked').classList.toggle('hidden', ok);
+    $('#tabOpen').textContent = ok ? 'Mở lại cửa sổ YouTube' : 'Mở cửa sổ YouTube';
+    return ok;
+  }
+  function silenceYtWindow() {
+    // Dừng tiếng ở cửa sổ YouTube (giữ cửa sổ để lần sau mở không bị chặn)
+    if (ytWin && !ytWin.closed) { try { ytWin.location.href = 'about:blank'; } catch (e) {} }
+  }
+  function closeYtWindow() { if (ytWin && !ytWin.closed) { try { ytWin.close(); } catch (e) {} } ytWin = null; }
+  function startTabMode(n) {
+    rememberNoEmbed(n.videoId);
+    if (playerReady) player.stopVideo();
+    tabMode = { id: n.id, videoId: n.videoId, duration: n.duration || 0, start: Date.now(), pausedAt: null, pausedMs: 0 };
+    const opened = openYtWindow(false);
+    hapi('/api/host/tabplay', { id: n.id, deviceId, opened });
+    setPPLabel(false);
+    refreshMode();
+    reportStatus();
+  }
+  function endTabMode({ close } = { close: true }) {
+    if (!tabMode) return;
+    tabMode = null;
+    if (close) closeYtWindow(); else silenceYtWindow();
+    refreshMode();
+  }
+  function toggleTabPause() {
+    if (!tabMode) return;
+    if (tabMode.pausedAt) { tabMode.pausedMs += Date.now() - tabMode.pausedAt; tabMode.pausedAt = null; }
+    else { tabMode.pausedAt = Date.now(); toast('Đã dừng đếm giờ. Nhớ tạm dừng cả trong cửa sổ YouTube.'); }
+    setPPLabel(!!tabMode.pausedAt);
+    hapi('/api/host/paused', { paused: !!tabMode.pausedAt, deviceId });
+    reportStatus();
+  }
+  $('#tabOpen').addEventListener('click', () => openYtWindow(true));
+
   function sync() {
     if (!playerReady || !controlling() || !state) return;
     const n = state.nowPlaying;
-    if (!n) { if (loadedId) { player.stopVideo(); loadedId = null; } return; }
-    if (n.id !== loadedId) { loadedId = n.id; player.loadVideoById(n.videoId); }
+    if (!n) { if (loadedId) { player.stopVideo(); loadedId = null; } endTabMode(); return; }
+    if (n.id !== loadedId) {
+      loadedId = n.id;
+      if (noEmbed.has(n.videoId)) { startTabMode(n); return; }   // đã biết bài này bị chặn nhúng
+      if (tabMode) endTabMode({ close: false });                // bài mới: thử phát nhúng trước
+      player.loadVideoById(n.videoId);
+    }
   }
 
   // ---- Máy phát / điều khiển từ xa ----
   function showOverlay(which) {
-    ['ovStart', 'ovRemote', 'ovConflict'].forEach((id) => $('#' + id).classList.toggle('hidden', id !== which));
+    ['ovStart', 'ovRemote', 'ovConflict', 'ovTab'].forEach((id) => $('#' + id).classList.toggle('hidden', id !== which));
     $('#startOverlay').classList.toggle('hidden', !which);
   }
   function refreshMode() {
-    if (controlling()) showOverlay(null);
+    if (controlling()) showOverlay(tabMode ? 'ovTab' : null);
     else if (speaker && !isSpeaker()) {
       $('#spkName').textContent = speaker.label;
       $('#spkOnline').textContent = speaker.online ? '(đang mở)' : '(đang tắt hoặc mất kết nối)';
@@ -383,12 +455,17 @@
       // Thiết bị khác đã nhận làm máy phát -> dừng phát ở đây
       started = false; loadedId = null;
       if (playerReady) player.stopVideo();
+      endTabMode();
       toast(`Nhạc đã chuyển sang ${sp.label}. Thiết bị này giờ là điều khiển từ xa.`);
     }
     refreshMode();
   }
   function reportStatus() {
     if (!controlling() || !playerReady || !hostConn || typeof player.getCurrentTime !== 'function') return;
+    if (tabMode) {
+      hostConn.send({ type: 'status', paused: !!tabMode.pausedAt, volume: player.getVolume(), t: tabElapsed(), d: tabMode.duration, videoId: tabMode.videoId, tab: true });
+      return;
+    }
     hostConn.send({
       type: 'status', paused: !isPlaying(), volume: player.getVolume(),
       t: player.getCurrentTime() || 0, d: player.getDuration() || 0,
@@ -397,6 +474,10 @@
   }
   function onCmd(c) {
     if (!controlling() || !playerReady || !c) return;
+    if (tabMode) {
+      if (c.action === 'toggle' || (c.action === 'pause' && !tabMode.pausedAt) || (c.action === 'play' && tabMode.pausedAt)) toggleTabPause();
+      return;
+    }
     if (c.action === 'toggle') isPlaying() ? player.pauseVideo() : player.playVideo();
     else if (c.action === 'pause') player.pauseVideo();
     else if (c.action === 'play') player.playVideo();
@@ -416,7 +497,7 @@
   // ---- Điều khiển ----
   function setPPLabel(paused) { $('#playPause').textContent = paused ? '▶ Phát tiếp' : '⏸ Tạm dừng'; }
   $('#playPause').addEventListener('click', () => {
-    if (controlling()) { if (playerReady) isPlaying() ? player.pauseVideo() : player.playVideo(); }
+    if (controlling()) { if (tabMode) toggleTabPause(); else if (playerReady) isPlaying() ? player.pauseVideo() : player.playVideo(); }
     else {
       if (!speaker || !speaker.online) return toast('Máy phát đang tắt. Hãy mở trang Admin trên máy nối loa.', true);
       sendCmd('toggle');
@@ -465,7 +546,21 @@
   setInterval(() => {
     tick++;
     const n = state?.nowPlaying;
-    if (controlling()) {
+    if (controlling() && tabMode) {
+      const el2 = Math.min(tabElapsed(), tabMode.duration || Infinity);
+      drawProgress(el2, tabMode.duration);
+      const left = Math.max(0, Math.round((tabMode.duration || 0) - tabElapsed()));
+      const winClosed = !ytWin || ytWin.closed;
+      $('#tabCountdown').textContent = tabMode.pausedAt ? 'Đã dừng đếm giờ' : winClosed && $('#tabBlocked').classList.contains('hidden')
+        ? `Cửa sổ YouTube đã bị đóng · tự chuyển bài sau ${fmtDur(left)}`
+        : `Tự chuyển bài sau ${fmtDur(left)}`;
+      // Hết thời lượng (+3 giây dự phòng) -> chuyển bài
+      if (tabMode.duration && !tabMode.pausedAt && tabElapsed() >= tabMode.duration + 3 && tabMode.endSent !== tabMode.id) {
+        tabMode.endSent = tabMode.id;
+        hapi('/api/host/ended', { id: tabMode.id, deviceId });
+      }
+      if (tick % 5 === 0) reportStatus();
+    } else if (controlling()) {
       lockRate();
       if (!playerReady || !n || typeof player.getCurrentTime !== 'function') return;
       drawProgress(player.getCurrentTime() || 0, player.getDuration() || n.duration || 0);
