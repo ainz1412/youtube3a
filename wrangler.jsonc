@@ -10,7 +10,9 @@
   },
   // Phòng nhạc: 1 Durable Object giữ hàng chờ + chat + kết nối WebSocket
   "durable_objects": {
-    "bindings": [{ "name": "ROOM", "class_name": "Room" }]
+    "bindings": [{ "name": "ROOM", "class_name": "Room" }],
+    // Khi deploy, phòng nhạc đang hoạt động chỉ chạy code cũ tối đa 30 giây (mặc định Cloudflare là 5 phút)
+    "code_update_strategy": { "mode": "deferred", "max_delay": 30 }
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   // Cấu hình không bí mật. Các biến bí mật (YOUTUBE_API_KEY, HOST_PASSWORD, ROOM_PIN)
