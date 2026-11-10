@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-10.1';
+const APP_VERSION = '2026-11-10.2';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {

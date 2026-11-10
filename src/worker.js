@@ -71,7 +71,9 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-10.1';
+const APP_VERSION = '2026-11-10.2';
+// Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
+const RETENTION_MS = 30 * 24 * 3600e3;
 
 // ---------- Phòng nhạc ----------
 export class Room extends DurableObject {
@@ -101,6 +103,7 @@ export class Room extends DurableObject {
       this.cfgOverride = m.get('cfgOverride') || {};
       this.speaker = m.get('speaker') || null;
       this.notice = m.get('notice') || null;
+      this.prune();
       await this.refreshKeyId();
     });
     // Trả lời "ping" mà không cần đánh thức Durable Object (tiết kiệm hạn mức miễn phí)
@@ -247,8 +250,18 @@ export class Room extends DurableObject {
     const msg = JSON.stringify({ type, data });
     for (const ws of this.ctx.getWebSockets()) if (ws !== exclude) { try { ws.send(msg); } catch (e) {} }
   }
+  // Xóa tin nhắn và lịch sử bài cũ hơn 30 ngày (khớp với Chính sách quyền riêng tư)
+  prune() {
+    const cutoff = Date.now() - RETENTION_MS;
+    const chatLen = this.chat.length, histLen = this.state.history.length;
+    this.chat = this.chat.filter((m) => (m.t || 0) >= cutoff);
+    this.state.history = this.state.history.filter((h) => (h.addedAt || 0) >= cutoff);
+    if (this.chat.length !== chatLen) this.ctx.storage.put('chat', this.chat);
+    if (this.state.history.length !== histLen) this.ctx.storage.put('state', this.state);
+  }
   changed() { this.ctx.storage.put('state', this.state); this.broadcast('state', this.publicState()); }
   pushChat(msg) {
+    this.prune();
     this.chat.push(msg);
     if (this.chat.length > 100) this.chat = this.chat.slice(-100);
     this.ctx.storage.put('chat', this.chat);
