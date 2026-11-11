@@ -40,6 +40,15 @@
   .progress:hover div { background: var(--green); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } #left { overflow: visible; } .chat .msgs { max-height: 40vh; } #queue { max-height: 40vh; } }
   .notice-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .switch { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch span { width: 40px; height: 22px; border-radius: 999px; background: #535353; position: relative; transition: background .15s; }
+  .switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + span { background: var(--green); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:checked ~ b { color: var(--green); }
+  .switch input:disabled + span { opacity: .4; cursor: default; }
+  .switch input:focus-visible + span { outline: 2px solid #fff; outline-offset: 2px; }
   .notice-form input { flex: 1; min-width: 220px; }
   /* Hạn mức YouTube API */
   #quotaPanel h2 .tools { margin-left: auto; display: flex; gap: 2px; align-items: center; }
@@ -137,11 +146,12 @@
     </section>
 
     <section class="panel" id="noticePanel">
-      <h2>Thông báo chạy chữ</h2>
+      <h2>Thông báo chạy chữ
+        <label class="switch" title="Bật / tắt thông báo, vẫn giữ nội dung"><input type="checkbox" id="noticeToggle"><span></span><b id="noticeToggleText">Tắt</b></label></h2>
       <form id="noticeForm" class="notice-form">
         <input type="text" id="noticeInput" maxlength="300" placeholder="Ví dụ: Mỗi người tối đa 3 bài, sau 22h ưu tiên nhạc chill 🎧" autocomplete="off">
         <button class="primary" type="submit">Đăng</button>
-        <button type="button" class="ghost" id="noticeOff">Tắt</button>
+        <button type="button" class="ghost" id="noticeOff">Xóa</button>
       </form>
       <div class="muted small" id="noticeInfo" style="margin-top:8px">Đang tắt</div>
     </section>
@@ -663,7 +673,7 @@
   });
 
   async function adminNote(song) {
-    const v = await promptDialog({ title: '💌 Lời nhắn kèm bài', hint: `Bài "${song.title}" của ${song.addedBy}. Để trống để xóa lời nhắn.`, value: song.note || '' });
+    const v = await promptDialog({ title: '🎁 Lời nhắn kèm bài', hint: `Bài "${song.title}" của ${song.addedBy}. Để trống để xóa lời nhắn.`, value: song.note || '' });
     if (v === null) return;
     const r = await hapi('/api/note', { id: song.id, note: v });
     if (r) toast(v ? 'Đã lưu lời nhắn' : 'Đã xóa lời nhắn');
@@ -673,7 +683,15 @@
   let noticeLoaded = false;
   function drawNoticeAdmin(n) {
     drawTicker({ ...(state || {}), notice: n });
-    $('#noticeInfo').textContent = n ? `Đang hiện cho mọi người · đăng lúc ${fmtTime(n.at)}` : 'Đang tắt. Nhập nội dung rồi bấm Đăng để hiện ở đầu trang của mọi người.';
+    const on = !!n && n.enabled !== false;
+    $('#noticeToggle').checked = on;
+    $('#noticeToggle').disabled = !n;
+    $('#noticeToggleText').textContent = on ? 'Đang bật' : 'Tắt';
+    const songNote = state && state.nowPlaying && state.nowPlaying.note;
+    $('#noticeInfo').textContent = !n ? 'Chưa có thông báo. Nhập nội dung rồi bấm Đăng để hiện ở đầu trang của mọi người.'
+      : !on ? 'Đang tắt (vẫn giữ nội dung, bật lại bằng công tắc).'
+      : songNote ? '🎁 Bài đang phát có lời nhắn nên thông báo tạm ẩn, hết bài sẽ hiện lại.'
+      : `Đang hiện cho mọi người · đăng lúc ${fmtTime(n.at)}`;
     if (!noticeLoaded || document.activeElement !== $('#noticeInput')) { if (!noticeLoaded) $('#noticeInput').value = n ? n.text : ''; noticeLoaded = true; }
     $('#noticeOff').classList.toggle('hidden', !n);
   }
@@ -681,11 +699,15 @@
     try {
       const r = await api('/api/host/notice', { pw, text });
       if (!r.notice) $('#noticeInput').value = '';
-      toast(r.notice ? '📢 Đã đăng thông báo' : 'Đã tắt thông báo');
+      toast(r.notice ? '📢 Đã đăng thông báo' : 'Đã xóa thông báo');
     } catch (e) { toast(e.message, true); }
   }
   $('#noticeForm').addEventListener('submit', (e) => { e.preventDefault(); saveNotice($('#noticeInput').value); });
   $('#noticeOff').addEventListener('click', () => saveNotice(''));
+  $('#noticeToggle').addEventListener('change', async (e) => {
+    try { await api('/api/host/notice', { pw, enabled: e.target.checked }); toast(e.target.checked ? '📢 Đã bật thông báo' : 'Đã tắt thông báo (vẫn giữ nội dung)'); }
+    catch (err) { e.target.checked = !e.target.checked; toast(err.message, true); }
+  });
 
   function render(s) {
     state = s;
@@ -698,7 +720,7 @@
       const n = s.nowPlaying;
       now.append(el('div', { class: 'np-title' }, n.title),
         el('div', { class: 'np-sub' }, n.channel, ' • Chọn bởi ', el('span', { class: 'badge' }, n.addedBy),
-          n.note ? el('span', {}, ' • 💌 ', n.note, ' ', el('button', { class: 'icon', title: 'Sửa / xóa lời nhắn', onclick: () => adminNote(n) }, '✏️')) : null));
+          n.note ? el('span', {}, ' • 🎁 ', n.note, ' ', el('button', { class: 'icon', title: 'Sửa / xóa lời nhắn', onclick: () => adminNote(n) }, '✏️')) : null));
       applyNowTint($('#nowPanel'), n.thumb);
     } else {
       now.textContent = 'Hàng chờ trống. Mời mọi người quét mã QR để thêm bài.';

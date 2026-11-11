@@ -58,11 +58,11 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 - Khi đang phát qua cửa sổ YouTube, nút Tạm dừng chỉ dừng đồng hồ đếm; hãy tạm dừng cả trong cửa sổ YouTube.
 
 ## Lời nhắn kèm bài & xem video
-- Khi thêm bài, có thể ghi **lời nhắn** (ô 💌 dưới ô tìm kiếm). Trong lúc bài đó phát, lời nhắn chạy trên đầu trang của mọi người (cùng thông báo của Admin). Người thêm bài sửa / xóa lời nhắn bằng nút ✏️ trong hàng chờ; Admin sửa / xóa được mọi lời nhắn.
+- Khi thêm bài, có thể ghi **lời nhắn** (ô 🎁 dưới ô tìm kiếm). Trong lúc bài đó phát, lời nhắn chạy trên đầu trang của mọi người và thay chỗ thông báo của Admin; bài có lời nhắn hiện 🎁 trong hàng chờ. Người thêm bài sửa / xóa lời nhắn bằng nút ✏️ trong hàng chờ; Admin sửa / xóa được mọi lời nhắn.
 - Người tham gia bấm **📺 Xem video** trong khung Đang phát để xem video đồng bộ với loa (tắt tiếng sẵn, có nút bật tiếng). Bài bị chặn phát nhúng chỉ hiện link xem trên YouTube.
 
 ## Thông báo chạy chữ
-Trang `/admin` → khung **Thông báo chạy chữ**: nhập nội dung → **Đăng**. Dòng chữ chạy ngang liên tục ở đầu trang của mọi người (rê chuột vào để dừng). Bấm **Tắt** để ẩn.
+Trang `/admin` → khung **Thông báo chạy chữ**: nhập nội dung → **Đăng**. Dòng chữ chạy ngang liên tục ở đầu trang của mọi người (rê chuột vào để dừng). Công tắc bật / tắt thông báo mà vẫn giữ nội dung; **Xóa** để xóa hẳn.
 
 ## Theo dõi hạn mức & đổi API key
 Trang `/admin` có khung **Hạn mức YouTube API**:

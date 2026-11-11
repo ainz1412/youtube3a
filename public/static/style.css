@@ -111,7 +111,10 @@ header .me a:hover { text-decoration: underline; }
 
 .badge { display: inline-block; background: rgba(255,255,255,.1); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; color: var(--text); }
 .badge.me { background: var(--green); color: #000; }
-.note-ic { cursor: help; }
+.song .tline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.song .tline .title { flex: 1; min-width: 0; }
+.song .gift { flex: none; font-size: 15px; line-height: 1; cursor: pointer; filter: drop-shadow(0 0 6px rgba(255, 197, 61, .55)); }
+.song .gift:hover { transform: scale(1.2); }
 .badge.yt { background: rgba(255, 82, 82, .16); color: #ff8a8a; cursor: help; }
 
 /* ---------- Đang phát (điểm nhấn: màu theo ảnh bìa) ---------- */

@@ -73,7 +73,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-11.1';
+const APP_VERSION = '2026-11-11.2';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -277,7 +277,7 @@ export class Room extends DurableObject {
     s.nowPlaying = s.queue.shift() || null;
     s.paused = false;
     this.changed();
-    if (s.nowPlaying) this.systemMsg(`▶️ Đang phát: ${s.nowPlaying.title} (${s.nowPlaying.addedBy} chọn)${s.nowPlaying.note ? ` — 💌 "${s.nowPlaying.note}"` : ''}`);
+    if (s.nowPlaying) this.systemMsg(`▶️ Đang phát: ${s.nowPlaying.title} (${s.nowPlaying.addedBy} chọn)${s.nowPlaying.note ? ` — 🎁 "${s.nowPlaying.note}"` : ''}`);
   }
 
   // ----- YouTube Data API v3 -----
@@ -507,8 +507,14 @@ export class Room extends DurableObject {
             }
             break;
           case 'notice': {
-            const text = String(body.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
-            this.notice = text ? { text, at: Date.now() } : null;
+            if (body.text === undefined) {
+              // Chỉ bật / tắt, giữ nguyên nội dung
+              if (!this.notice) return json({ error: 'Chưa có nội dung thông báo' }, 400);
+              this.notice.enabled = !!body.enabled;
+            } else {
+              const text = String(body.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+              this.notice = text ? { text, at: Date.now(), enabled: body.enabled !== false } : null;
+            }
             if (this.notice) await this.ctx.storage.put('notice', this.notice); else await this.ctx.storage.delete('notice');
             this.broadcast('state', this.publicState());
             return json({ ok: true, notice: this.notice });

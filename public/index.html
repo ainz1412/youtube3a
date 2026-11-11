@@ -84,7 +84,7 @@
       <button class="primary" type="submit">Thêm</button>
     </form>
     <div class="note-input">
-      <input type="text" id="noteInput" maxlength="120" placeholder="💌 Lời nhắn kèm bài (không bắt buộc)" autocomplete="off">
+      <input type="text" id="noteInput" maxlength="120" placeholder="🎁 Lời nhắn kèm bài (không bắt buộc)" autocomplete="off">
       <small>Lời nhắn chạy trên đầu trang của mọi người trong lúc bài bạn chọn đang phát.</small>
     </div>
     <div class="scroll" id="results" style="margin-top:10px">
@@ -247,12 +247,12 @@
 
   async function editNote(song) {
     const v = await promptDialog({
-      title: '💌 Lời nhắn kèm bài',
+      title: '🎁 Lời nhắn kèm bài',
       hint: `Chạy trên đầu trang trong lúc "${song.title}" đang phát. Để trống để xóa lời nhắn.`,
       value: song.note || '', placeholder: 'Ví dụ: Tặng cả phòng, chúc ngủ ngon 😴',
     });
     if (v === null) return;
-    try { await api('/api/note', { id: song.id, note: v, cid, pin }); toast(v ? 'Đã lưu lời nhắn 💌' : 'Đã xóa lời nhắn'); }
+    try { await api('/api/note', { id: song.id, note: v, cid, pin }); toast(v ? 'Đã lưu lời nhắn 🎁' : 'Đã xóa lời nhắn'); }
     catch (e) { toast(e.message, true); }
   }
 
@@ -431,7 +431,7 @@
       const note = $('#noteInput').value.trim();
       const { song } = await api('/api/add', { ...payload, name, cid, pin, note });
       $('#noteInput').value = '';
-      toast('✅ Đã thêm: ' + song.title + (song.note ? ' (kèm lời nhắn 💌)' : ''));
+      toast('✅ Đã thêm: ' + song.title + (song.note ? ' (kèm lời nhắn 🎁)' : ''));
       return true;
     } catch (err) {
       if (!handleAuthError(err)) toast(err.message, true);
