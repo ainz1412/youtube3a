@@ -15,6 +15,8 @@
   #mid { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .searchbar { display: flex; gap: 8px; }
   .searchbar input { flex: 1; }
+  .skip-btn { margin-left: 8px; padding: 3px 12px; font-size: 12.5px; vertical-align: middle; }
+  .skip-btn.confirm { border-color: var(--danger); color: var(--danger); }
   .note-input { margin-top: 10px; }
   .note-input input { width: 100%; font-size: 14px; padding: 9px 16px; }
   .note-input small { display: block; color: var(--subtle); font-size: 11.5px; margin: 4px 6px 0; }
@@ -226,7 +228,8 @@
         el('div', { style: 'min-width:0' },
           el('a', { class: 'title', href: 'https://www.youtube.com/watch?v=' + n.videoId, target: '_blank', rel: 'noopener', title: 'Xem trên YouTube', style: 'color:inherit;text-decoration:none' }, n.title),
           el('div', { class: 'np-sub' }, n.channel, ' • ', fmtDur(n.duration), s.paused ? ' • Tạm dừng' : ''),
-          el('div', { class: 'np-by' }, 'Chọn bởi ', el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy)))));
+          el('div', { class: 'np-by' }, 'Chọn bởi ', el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy),
+            n.owner === myOwner ? el('button', { class: 'ghost skip-btn', type: 'button', title: 'Bỏ qua bài bạn chọn', onclick: (e) => skipMine(n, e.currentTarget) }, '⏭ Bỏ qua') : null))));
       applyNowTint($('#nowPanel'), n.thumb);
     } else { now.append(el('div', { class: 'empty' }, 'Chưa có bài nào. Hãy là người đầu tiên!')); applyNowTint($('#nowPanel'), null); }
 
@@ -252,6 +255,20 @@
     $('#online').textContent = s.online.length ? s.online.join(', ') : '';
     $('#online').title = s.online.join(', ');
     refreshResultButtons();
+  }
+
+  // Bỏ qua bài mình chọn: bấm 2 lần để tránh bấm nhầm
+  async function skipMine(n, btn) {
+    if (!btn.dataset.confirm) {
+      btn.dataset.confirm = '1';
+      btn.textContent = 'Bấm lần nữa để bỏ qua';
+      btn.classList.add('confirm');
+      setTimeout(() => { if (btn.isConnected) { delete btn.dataset.confirm; btn.textContent = '⏭ Bỏ qua'; btn.classList.remove('confirm'); } }, 3500);
+      return;
+    }
+    btn.disabled = true;
+    try { await api('/api/skip', { id: n.id, cid, pin }); toast('⏭ Đã bỏ qua bài của bạn'); }
+    catch (e) { toast(e.message, true); btn.disabled = false; }
   }
 
   async function editNote(song) {

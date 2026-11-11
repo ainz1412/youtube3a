@@ -73,7 +73,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-11.4';
+const APP_VERSION = '2026-11-11.5';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -388,6 +388,18 @@ export class Room extends DurableObject {
         this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}`);
         if (!this.state.nowPlaying) this.playNext(); else this.changed();
         return json({ ok: true, song });
+      }
+
+      if (p === '/api/skip') {
+        // Người chọn bài đang phát tự bỏ qua bài của mình
+        if (!this.pinOk(body.pin, body.pw)) return json({ error: 'Sai mã phòng' }, 403);
+        const np = this.state.nowPlaying;
+        if (!np || np.id !== body.id) return json({ error: 'Bài này không còn đang phát' }, 409);
+        if (np.owner !== (await sha(body.cid || ''))) return json({ error: 'Bạn chỉ bỏ qua được bài do mình chọn' }, 403);
+        if (this.limited('skip:' + ip, 5, 60_000)) return json({ error: 'Bạn chuyển bài nhanh quá, chờ chút nhé' }, 429);
+        this.systemMsg(`⏭ ${np.addedBy} đã bỏ qua bài mình chọn: ${np.title}`);
+        this.playNext();
+        return json({ ok: true });
       }
 
       if (p === '/api/note') {
