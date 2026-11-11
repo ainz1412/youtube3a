@@ -662,10 +662,17 @@
     finally { btn.disabled = false; btn.textContent = 'Lưu'; }
   });
 
+  async function adminNote(song) {
+    const v = await promptDialog({ title: '💌 Lời nhắn kèm bài', hint: `Bài "${song.title}" của ${song.addedBy}. Để trống để xóa lời nhắn.`, value: song.note || '' });
+    if (v === null) return;
+    const r = await hapi('/api/note', { id: song.id, note: v });
+    if (r) toast(v ? 'Đã lưu lời nhắn' : 'Đã xóa lời nhắn');
+  }
+
   // ---------- Thông báo chạy chữ ----------
   let noticeLoaded = false;
   function drawNoticeAdmin(n) {
-    drawNotice(n);
+    drawTicker({ ...(state || {}), notice: n });
     $('#noticeInfo').textContent = n ? `Đang hiện cho mọi người · đăng lúc ${fmtTime(n.at)}` : 'Đang tắt. Nhập nội dung rồi bấm Đăng để hiện ở đầu trang của mọi người.';
     if (!noticeLoaded || document.activeElement !== $('#noticeInput')) { if (!noticeLoaded) $('#noticeInput').value = n ? n.text : ''; noticeLoaded = true; }
     $('#noticeOff').classList.toggle('hidden', !n);
@@ -690,7 +697,8 @@
     if (s.nowPlaying) {
       const n = s.nowPlaying;
       now.append(el('div', { class: 'np-title' }, n.title),
-        el('div', { class: 'np-sub' }, n.channel, ' • Chọn bởi ', el('span', { class: 'badge' }, n.addedBy)));
+        el('div', { class: 'np-sub' }, n.channel, ' • Chọn bởi ', el('span', { class: 'badge' }, n.addedBy),
+          n.note ? el('span', {}, ' • 💌 ', n.note, ' ', el('button', { class: 'icon', title: 'Sửa / xóa lời nhắn', onclick: () => adminNote(n) }, '✏️')) : null));
       applyNowTint($('#nowPanel'), n.thumb);
     } else {
       now.textContent = 'Hàng chờ trống. Mời mọi người quét mã QR để thêm bài.';
@@ -708,6 +716,7 @@
         el('button', { class: 'icon', title: 'Phát tiếp theo', onclick: () => hapi('/api/host/move', { id: song.id, dir: 'top' }) }, '⤒'),
         el('button', { class: 'icon', title: 'Lên', onclick: () => hapi('/api/host/move', { id: song.id, dir: 'up' }) }, '▲'),
         el('button', { class: 'icon', title: 'Xuống', onclick: () => hapi('/api/host/move', { id: song.id, dir: 'down' }) }, '▼'),
+        el('button', { class: 'icon', title: song.note ? 'Lời nhắn: ' + song.note : 'Thêm lời nhắn', onclick: () => adminNote(song) }, '✏️'),
         el('button', { class: 'icon', title: 'Xóa', onclick: () => hapi('/api/remove', { id: song.id }) }, '✕'),
       ],
     })));

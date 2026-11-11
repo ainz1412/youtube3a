@@ -20,6 +20,8 @@ const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 
 const cleanName = (n) => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+// Lời nhắn kèm bài: chạy trên đầu trang trong lúc bài đó phát
+const cleanNote = (n) => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 120);
 
 function extractVideoId(input) {
   input = String(input || '').trim();
@@ -71,7 +73,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-10.4';
+const APP_VERSION = '2026-11-11.1';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -275,7 +277,7 @@ export class Room extends DurableObject {
     s.nowPlaying = s.queue.shift() || null;
     s.paused = false;
     this.changed();
-    if (s.nowPlaying) this.systemMsg(`▶️ Đang phát: ${s.nowPlaying.title} (${s.nowPlaying.addedBy} chọn)`);
+    if (s.nowPlaying) this.systemMsg(`▶️ Đang phát: ${s.nowPlaying.title} (${s.nowPlaying.addedBy} chọn)${s.nowPlaying.note ? ` — 💌 "${s.nowPlaying.note}"` : ''}`);
   }
 
   // ----- YouTube Data API v3 -----
@@ -380,11 +382,27 @@ export class Room extends DurableObject {
           thumb: v.thumb, duration: v.duration, addedBy: name, owner, addedAt: Date.now(),
           // Chủ video không cho phát nhúng -> máy phát sẽ mở bài này trên youtube.com
           ...(v.embeddable ? {} : { noEmbed: true }),
+          ...(cleanNote(body.note) ? { note: cleanNote(body.note) } : {}),
         };
         this.state.queue.push(song);
         this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}`);
         if (!this.state.nowPlaying) this.playNext(); else this.changed();
         return json({ ok: true, song });
+      }
+
+      if (p === '/api/note') {
+        // Sửa / xóa lời nhắn của bài: người thêm bài hoặc Admin
+        if (!this.pinOk(body.pin, body.pw)) return json({ error: 'Sai mã phòng' }, 403);
+        const host = this.isHost(body.pw);
+        const st = this.state;
+        const song = st.queue.find((x) => x.id === body.id) || (st.nowPlaying && st.nowPlaying.id === body.id ? st.nowPlaying : null);
+        if (!song) return json({ error: 'Không tìm thấy bài' }, 404);
+        if (!host && song.owner !== (await sha(body.cid || ''))) return json({ error: 'Bạn chỉ sửa được lời nhắn cho bài của mình' }, 403);
+        if (!host && this.limited('note:' + ip, 10, 60_000)) return json({ error: 'Bạn sửa nhanh quá, chờ chút nhé' }, 429);
+        const note = cleanNote(body.note);
+        if (note) song.note = note; else delete song.note;
+        this.changed();
+        return json({ ok: true, note: song.note || '' });
       }
 
       if (p === '/api/remove') {
@@ -580,10 +598,8 @@ export class Room extends DurableObject {
     this.send(server, 'state', this.publicState());
     this.send(server, 'chatHistory', this.chat.slice(-50));
     this.broadcast('state', this.publicState(), server); // cập nhật danh sách online cho người khác
-    if (isHost) {
-      this.send(server, 'player', this.player);
-      this.broadcastHosts('speaker', this.speakerInfo()); // báo máy phát online / offline
-    }
+    this.send(server, 'player', this.player); // vị trí bài đang phát, để xem video đồng bộ
+    if (isHost) this.broadcastHosts('speaker', this.speakerInfo()); // báo máy phát online / offline
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -613,8 +629,8 @@ export class Room extends DurableObject {
     } else if (m.type === 'status' && this.speaker && a.deviceId === this.speaker.id) {
       // Máy phát báo trạng thái -> chuyển cho các thiết bị điều khiển
       const n = (v, max) => (Number.isFinite(+v) ? Math.max(0, Math.min(max, +v)) : 0);
-      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 11), at: Date.now() };
-      this.broadcastHosts('player', this.player, ws);
+      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 11), tab: !!m.tab, at: Date.now() };
+      this.broadcast('player', { ...this.player, tab: !!m.tab }, ws);
     }
   }
   webSocketClose(ws) {

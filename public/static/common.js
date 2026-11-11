@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-10.4';
+const APP_VERSION = '2026-11-11.1';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -69,6 +69,7 @@ function songRow(s, { num, mine, actions = [] } = {}) {
         s.noEmbed || s.embeddable === false ? el('span', { class: 'badge yt', title: 'Chủ video không cho phát trên website khác. Máy phát sẽ mở bài này trong cửa sổ youtube.com.' }, '↗ YouTube') : null,
         s.noEmbed || s.embeddable === false ? ' ' : null,
         s.addedBy ? el('span', { class: 'badge' + (mine ? ' me' : '') }, s.addedBy) : null,
+        s.note ? el('span', { class: 'note-ic', title: 'Lời nhắn: ' + s.note }, ' 💌') : null,
         s.addedBy ? ' ' : null,
         s.channel)),
     el('div', { class: 'dur' }, fmtDur(s.duration)),
@@ -318,11 +319,15 @@ function showUpdateBar() {
     el('button', { class: 'icon', title: 'Để sau', onclick: () => $('#updateBar').remove() }, '✕')));
 }
 
-// Thông báo chạy ngang trên đầu trang
-function drawNotice(notice) {
+// Dòng chữ chạy trên đầu trang: lời nhắn kèm bài đang phát + thông báo của Admin
+function drawTicker(st) {
   const box = $('#marquee');
   if (!box) return;
-  const text = notice && notice.text ? notice.text : '';
+  const parts = [];
+  const n = st && st.nowPlaying;
+  if (n && n.note) parts.push(`💌 ${n.addedBy}: ${n.note}`);
+  if (st && st.notice && st.notice.text) parts.push(`📢 ${st.notice.text}`);
+  const text = parts.join('       •       ');
   box.classList.toggle('hidden', !text);
   const track = $('#marqueeTrack');
   if (track.dataset.text === text) return;
@@ -332,6 +337,26 @@ function drawNotice(notice) {
     const dist = box.clientWidth + track.scrollWidth;  // quãng đường chữ chạy (px)
     track.style.setProperty('--dur', Math.max(8, dist / 80) + 's');  // ~80px mỗi giây
     track.style.animation = 'none'; void track.offsetWidth; track.style.animation = '';
+  });
+}
+
+// Hộp nhập ngắn (thay cho prompt của trình duyệt)
+function promptDialog({ title, hint = '', value = '', placeholder = '', maxLength = 120, okText = 'Lưu', allowEmpty = true }) {
+  return new Promise((resolve) => {
+    const input = el('input', { type: 'text', maxlength: maxLength, placeholder, autocomplete: 'off' });
+    input.value = value;
+    const close = (v) => { ov.remove(); resolve(v); };
+    const ov = el('div', { class: 'overlay' },
+      el('form', { class: 'panel', onsubmit: (e) => { e.preventDefault(); const v = input.value.trim(); if (!v && !allowEmpty) return; close(v); } },
+        el('h2', {}, title),
+        hint ? el('p', { class: 'muted small', style: 'margin:0 0 14px' }, hint) : null,
+        input,
+        el('div', { style: 'display:flex;gap:8px;margin-top:16px' },
+          el('button', { class: 'primary', type: 'submit' }, okText),
+          el('button', { type: 'button', style: 'margin-left:auto', onclick: () => close(null) }, 'Hủy'))));
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
+    document.body.append(ov);
+    setTimeout(() => { input.focus(); input.select(); }, 30);
   });
 }
 

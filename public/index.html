@@ -15,6 +15,17 @@
   #mid { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .searchbar { display: flex; gap: 8px; }
   .searchbar input { flex: 1; }
+  .note-input { margin-top: 10px; }
+  .note-input input { width: 100%; font-size: 14px; padding: 9px 16px; }
+  .note-input small { display: block; color: var(--subtle); font-size: 11.5px; margin: 4px 6px 0; }
+  #nowPanel h2 .watch-btn { margin-left: auto; padding: 4px 12px; font-size: 13px; }
+  .watch { margin-top: 14px; }
+  .watch .frame { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; }
+  .watch .frame > div, .watch .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .watch .bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12.5px; color: rgba(255,255,255,.75); }
+  .watch .bar button { padding: 4px 12px; font-size: 12.5px; }
+  .watch .msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; font-size: 14px; color: var(--muted); background: #000; z-index: 1; }
+  .watch .msg a { color: var(--green); }
   .legal-links { font-size: 11.5px; color: var(--subtle); margin-top: 10px; text-align: center; }
   .legal-links a { color: var(--muted); }
   .squota { font-size: 12.5px; color: var(--subtle); margin: 8px 4px 0; min-height: 18px; }
@@ -72,6 +83,10 @@
       <input type="text" id="linkInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
       <button class="primary" type="submit">Thêm</button>
     </form>
+    <div class="note-input">
+      <input type="text" id="noteInput" maxlength="120" placeholder="💌 Lời nhắn kèm bài (không bắt buộc)" autocomplete="off">
+      <small>Lời nhắn chạy trên đầu trang của mọi người trong lúc bài bạn chọn đang phát.</small>
+    </div>
     <div class="scroll" id="results" style="margin-top:10px">
       <div class="empty">Tìm một bài rồi bấm <b>Thêm</b> để xếp vào hàng chờ.</div>
     </div>
@@ -80,8 +95,16 @@
 
   <div id="mid">
     <section class="panel" id="nowPanel">
-      <h2><span class="eq"><i></i><i></i><i></i></span> Đang phát</h2>
+      <h2><span class="eq"><i></i><i></i><i></i></span> Đang phát
+        <button class="ghost watch-btn" id="watchBtn" type="button" title="Xem video đồng bộ với loa của phòng (tắt tiếng sẵn)">📺 Xem video</button></h2>
       <div id="now"><div class="empty">Chưa có bài nào. Hãy là người đầu tiên!</div></div>
+      <div class="watch hidden" id="watchBox">
+        <div class="frame"><div id="watchPlayer"></div><div class="msg hidden" id="watchMsg"></div></div>
+        <div class="bar">
+          <button class="ghost" id="muteBtn" type="button">🔇 Bật tiếng</button>
+          <span id="watchInfo">Đồng bộ với loa của phòng</span>
+        </div>
+      </div>
     </section>
 
     <section class="panel" id="queuePanel">
@@ -175,6 +198,7 @@
       chatHistory: chat.reset,
       chat: chat.add,
       typing: chat.typing,
+      player: onPlayer,
       react: chat.react,
       connect: () => $('#conn').classList.add('on'),
       disconnect: () => $('#conn').classList.remove('on'),
@@ -205,17 +229,106 @@
       const mine = song.owner === myOwner;
       q.append(songRow(song, {
         num: i + 1, mine,
-        actions: mine ? [el('button', { class: 'icon', title: 'Xóa bài của bạn', onclick: () => removeSong(song.id) }, '✕')] : [],
+        actions: mine ? [
+          el('button', { class: 'icon', title: song.note ? 'Sửa lời nhắn: ' + song.note : 'Thêm lời nhắn cho bài này', onclick: () => editNote(song) }, '✏️'),
+          el('button', { class: 'icon', title: 'Xóa bài của bạn', onclick: () => removeSong(song.id) }, '✕'),
+        ] : [],
       }));
     });
 
     drawSearchQuota(s.search);
-    drawNotice(s.notice);
+    drawTicker(s);
+    syncVideo();
     $('#onlineCount').textContent = `${s.online.length} người online`;
     $('#online').textContent = s.online.length ? s.online.join(', ') : '';
     $('#online').title = s.online.join(', ');
     refreshResultButtons();
   }
+
+  async function editNote(song) {
+    const v = await promptDialog({
+      title: '💌 Lời nhắn kèm bài',
+      hint: `Chạy trên đầu trang trong lúc "${song.title}" đang phát. Để trống để xóa lời nhắn.`,
+      value: song.note || '', placeholder: 'Ví dụ: Tặng cả phòng, chúc ngủ ngon 😴',
+    });
+    if (v === null) return;
+    try { await api('/api/note', { id: song.id, note: v, cid, pin }); toast(v ? 'Đã lưu lời nhắn 💌' : 'Đã xóa lời nhắn'); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  // ---- 📺 Xem video đồng bộ với máy phát (tắt tiếng sẵn) ----
+  let vp = null, vpReady = false, vpOn = false, lastP = null, blockedVid = null;
+  function onPlayer(p) { lastP = p ? { ...p, recvAt: Date.now() } : null; syncVideo(); }
+  function loadYT() {
+    return new Promise((resolve) => {
+      if (window.YT && window.YT.Player) return resolve();
+      window.onYouTubeIframeAPIReady = resolve;
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.append(sc);
+      }
+    });
+  }
+  function watchMsg(html) {
+    const m = $('#watchMsg');
+    if (!html) { m.classList.add('hidden'); return; }
+    m.innerHTML = ''; m.append(...html); m.classList.remove('hidden');
+  }
+  async function startWatch() {
+    vpOn = true;
+    $('#watchBox').classList.remove('hidden');
+    $('#watchBtn').textContent = '✕ Tắt video';
+    $('#muteBtn').textContent = '🔇 Bật tiếng';
+    watchMsg(['Đang tải trình phát…']);
+    await loadYT();
+    if (!vpOn || vp) return syncVideo();
+    vp = new YT.Player('watchPlayer', {
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0 },
+      events: {
+        onReady: () => { vpReady = true; vp.mute(); syncVideo(); },
+        onError: (e) => { if (e.data === 101 || e.data === 150) { blockedVid = current?.nowPlaying?.videoId; syncVideo(); } },
+      },
+    });
+  }
+  function stopWatch() {
+    vpOn = false;
+    if (vp) { try { vp.destroy(); } catch (e) {} }
+    vp = null; vpReady = false;
+    $('#watchBox').innerHTML = '<div class="frame"><div id="watchPlayer"></div><div class="msg hidden" id="watchMsg"></div></div><div class="bar"><button class="ghost" id="muteBtn" type="button">🔇 Bật tiếng</button><span id="watchInfo">Đồng bộ với loa của phòng</span></div>';
+    $('#muteBtn').addEventListener('click', toggleMute);
+    $('#watchBox').classList.add('hidden');
+    $('#watchBtn').textContent = '📺 Xem video';
+  }
+  function toggleMute() {
+    if (!vpReady) return;
+    if (vp.isMuted()) { vp.unMute(); $('#muteBtn').textContent = '🔊 Tắt tiếng'; toast('Đã bật tiếng. Nếu đang ở trong phòng, nên đeo tai nghe để không bị vọng tiếng.'); }
+    else { vp.mute(); $('#muteBtn').textContent = '🔇 Bật tiếng'; }
+  }
+  $('#watchBtn').addEventListener('click', () => (vpOn ? stopWatch() : startWatch()));
+  $('#muteBtn').addEventListener('click', toggleMute);
+  function syncVideo() {
+    if (!vpOn) return;
+    const n = current && current.nowPlaying;
+    const ytLink = (id) => el('a', { href: 'https://www.youtube.com/watch?v=' + id, target: '_blank', rel: 'noopener' }, 'Xem trên YouTube');
+    if (!n) { watchMsg(['Chưa có bài nào đang phát.']); if (vpReady) vp.stopVideo(); return; }
+    const p = lastP && lastP.videoId === n.videoId ? lastP : null;
+    if (n.noEmbed || blockedVid === n.videoId || (p && p.tab)) {
+      watchMsg([el('div', {}, 'Chủ video không cho phát trên website khác.', el('br'), ytLink(n.videoId))]);
+      if (vpReady) vp.stopVideo();
+      return;
+    }
+    if (!vpReady) return;
+    watchMsg(null);
+    const target = p ? p.t + (p.paused ? 0 : (Date.now() - p.recvAt) / 1000) + 0.3 : null;
+    const data = vp.getVideoData ? vp.getVideoData() : null;
+    if (!data || data.video_id !== n.videoId) { vp.loadVideoById({ videoId: n.videoId, startSeconds: target || 0 }); return; }
+    if (target != null && Math.abs((vp.getCurrentTime() || 0) - target) > 2.5) vp.seekTo(target, true);
+    const st = vp.getPlayerState();
+    if (p && p.paused) { if (st === YT.PlayerState.PLAYING) vp.pauseVideo(); }
+    else if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED, YT.PlayerState.UNSTARTED].includes(st)) vp.playVideo();
+    $('#watchInfo').textContent = p ? (p.paused ? 'Máy phát đang tạm dừng' : 'Đồng bộ với loa của phòng') : 'Máy phát chưa gửi vị trí, đang phát từ đầu';
+  }
+  setInterval(syncVideo, 2000);
 
   async function removeSong(id) {
     try { await api('/api/remove', { id, cid }); toast('Đã xóa khỏi hàng chờ'); }
@@ -315,8 +428,10 @@
     if (!name) { askName(); return false; }
     if (btn) { btn.dataset.busy = '1'; btn.disabled = true; btn.textContent = '...'; }
     try {
-      const { song } = await api('/api/add', { ...payload, name, cid, pin });
-      toast('✅ Đã thêm: ' + song.title);
+      const note = $('#noteInput').value.trim();
+      const { song } = await api('/api/add', { ...payload, name, cid, pin, note });
+      $('#noteInput').value = '';
+      toast('✅ Đã thêm: ' + song.title + (song.note ? ' (kèm lời nhắn 💌)' : ''));
       return true;
     } catch (err) {
       if (!handleAuthError(err)) toast(err.message, true);
