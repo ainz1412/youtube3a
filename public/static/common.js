@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-11.3';
+const APP_VERSION = '2026-11-11.4';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -246,6 +246,10 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
       const f = msgs.firstChild; if (f.dataset && f.dataset.id) { nodes.delete(f.dataset.id); byId.delete(f.dataset.id); } f.remove();
     }
     if (m.name) { typers.delete(m.name); drawTyping(); }
+    if (!initial && !m.system && !isMine(m) && opts.onIncoming) {
+      const orig = m.reply && byId.get(m.reply.id);
+      opts.onIncoming(m, { replyToMe: !!(orig && isMine(orig)) });
+    }
     if (stick) toBottom();
     else if (!initial) {
       unread++;
@@ -359,6 +363,83 @@ function promptDialog({ title, hint = '', value = '', placeholder = '', maxLengt
     document.body.append(ov);
     setTimeout(() => { input.focus(); input.select(); }, 30);
   });
+}
+
+// ---------- Âm báo + thông báo trình duyệt khi có tin nhắn ----------
+function createNotifier({ storageKey, defaultOn, button }) {
+  const saved = localStorage.getItem(storageKey);
+  let on = saved === null ? defaultOn : saved === '1';
+  let ctx = null;
+  const baseTitle = document.title;
+  let unread = 0;
+  const canNotify = 'Notification' in window;
+
+  // Trình duyệt chỉ cho phát âm thanh sau khi người dùng đã chạm / bấm vào trang
+  const unlock = () => {
+    try { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); } catch (e) {}
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, unlock, { passive: true }));
+
+  function ting() {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    [988, 1319].forEach((f, i) => {  // 2 nốt ngắn "ting-ting"
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      const s = t + i * 0.1;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(0.16, s + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.35);
+      o.connect(g).connect(ctx.destination);
+      o.start(s); o.stop(s + 0.4);
+    });
+  }
+  async function showNotification(title, body, tag) {
+    if (!canNotify || Notification.permission !== 'granted') return;
+    const optsN = { body, tag, renotify: true, silent: true, data: { url: location.pathname } };
+    try {
+      const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      if (reg) return reg.showNotification(title, optsN);
+      const n = new Notification(title, optsN);
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { unread = 0; document.title = baseTitle; } });
+
+  function notify(title, body, tag = 'chat') {
+    if (!on) return;
+    ting();
+    if (document.hidden) {
+      unread++;
+      document.title = `(${unread}) ${baseTitle}`;
+      showNotification(title, body, tag);
+    }
+  }
+  function draw() {
+    if (!button) return;
+    button.textContent = on ? '🔔' : '🔕';
+    const perm = canNotify ? Notification.permission : 'unsupported';
+    button.title = !on ? 'Đang tắt âm báo tin nhắn. Bấm để bật.'
+      : perm === 'granted' ? 'Đang bật âm báo và thông báo khi bạn ở tab khác. Bấm để tắt.'
+      : perm === 'denied' ? 'Đang bật âm báo. Thông báo trình duyệt bị chặn: bật lại trong cài đặt trang (biểu tượng ổ khóa ở thanh địa chỉ).'
+      : 'Đang bật âm báo. Bấm để tắt.';
+  }
+  async function toggle() {
+    on = !on;
+    localStorage.setItem(storageKey, on ? '1' : '0');
+    if (on) {
+      unlock();
+      if ('serviceWorker' in navigator) { try { await navigator.serviceWorker.register('/sw.js'); } catch (e) {} }
+      if (canNotify && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
+      setTimeout(ting, 50);
+      toast(canNotify && Notification.permission === 'granted' ? '🔔 Đã bật âm báo và thông báo tin nhắn' : '🔔 Đã bật âm báo tin nhắn');
+    } else toast('🔕 Đã tắt âm báo tin nhắn');
+    draw();
+  }
+  if (button) button.addEventListener('click', toggle);
+  if (on && 'serviceWorker' in navigator && canNotify && Notification.permission === 'granted') navigator.serviceWorker.register('/sw.js').catch(() => {});
+  draw();
+  return { notify, isOn: () => on };
 }
 
 // Kết nối WebSocket thời gian thực, tự nối lại khi rớt mạng

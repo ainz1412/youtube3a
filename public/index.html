@@ -114,7 +114,7 @@
   </div>
 
   <section class="panel chat" id="chatPanel">
-    <h2>Chat chung <span class="badge" id="onlineCount">0 online</span></h2>
+    <h2>Chat chung <span class="badge" id="onlineCount">0 online</span><button class="icon" id="notifyBtn" type="button" style="font-size:16px;padding:2px 6px">🔔</button></h2>
     <div class="msgs"></div>
     <div class="typing"></div>
     <form>
@@ -153,7 +153,9 @@
   let conn = null;
   let current = null;
 
+  const notifier = createNotifier({ storageKey: 'jb_notify', defaultOn: true, button: $('#notifyBtn') });
   const chat = setupChat($('#chatPanel'), () => name, () => ({ pin }), {
+    onIncoming: (m, { replyToMe }) => notifier.notify(replyToMe ? `↩ ${m.host ? 'Admin' : m.name} trả lời bạn` : `💬 ${m.host ? 'Admin' : m.name}`, m.text, replyToMe ? 'reply' : 'chat'),
     myOwner: () => myOwner,
     isMine: (m) => !!myOwner && m.owner === myOwner,
     onTyping: () => conn && conn.send({ type: 'typing' }),
@@ -205,7 +207,14 @@
     });
   }
 
+  let lastNowId = null;
   function render(s) {
+    // Báo khi bài mình chọn bắt đầu phát
+    const nowId = s.nowPlaying ? s.nowPlaying.id : null;
+    if (lastNowId !== null && nowId && nowId !== lastNowId && myOwner && s.nowPlaying.owner === myOwner) {
+      notifier.notify('🎵 Bài bạn chọn đang phát', s.nowPlaying.title, 'mysong');
+    }
+    lastNowId = nowId || '';
     current = s;
     const now = $('#now');
     now.innerHTML = '';

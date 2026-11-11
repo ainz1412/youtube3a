@@ -192,7 +192,7 @@
     </section>
 
     <section class="panel chat" id="chatPanel">
-      <h2>Chat chung <button class="icon small" id="clearChat" style="margin-left:auto">Xóa chat</button></h2>
+      <h2>Chat chung <button class="icon" id="notifyBtn" type="button" style="margin-left:auto;font-size:16px;padding:2px 6px">🔕</button><button class="icon small" id="clearChat">Xóa chat</button></h2>
       <div class="msgs"></div>
       <div class="typing"></div>
       <form>
@@ -240,7 +240,10 @@
   const hostName = 'Admin';
   const hapi = (path, body = {}) => api(path, { ...body, pw }).catch((e) => { toast(e.message, true); });
   let hostConn = null;
+  // Máy Admin thường là máy nối loa: tắt âm báo mặc định để tiếng "ting" không phát ra loa của phòng
+  const notifier = createNotifier({ storageKey: 'jb_notify_admin', defaultOn: false, button: $('#notifyBtn') });
   const chat = setupChat($('#chatPanel'), () => hostName, () => ({ pw }), {
+    onIncoming: (m, { replyToMe }) => notifier.notify(replyToMe ? `↩ ${m.name} trả lời Admin` : `💬 ${m.name}`, m.text, replyToMe ? 'reply' : 'chat'),
     myOwner: () => 'host',
     isMine: (m) => !!m.host,
     onTyping: () => hostConn && hostConn.send({ type: 'typing' }),

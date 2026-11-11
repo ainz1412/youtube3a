@@ -61,6 +61,12 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 - Khi thêm bài, có thể ghi **lời nhắn** (ô 🎁 dưới ô tìm kiếm). Trong lúc bài đó phát, lời nhắn chạy trên đầu trang của mọi người và thay chỗ thông báo của Admin; bài có lời nhắn hiện 🎁 trong hàng chờ. Người thêm bài sửa / xóa lời nhắn bằng nút ✏️ trong hàng chờ; Admin sửa / xóa được mọi lời nhắn.
 - Người tham gia bấm **📺 Xem video** trong khung Đang phát để xem video đồng bộ với loa (tắt tiếng sẵn, có nút bật tiếng). Bài bị chặn phát nhúng chỉ hiện link xem trên YouTube.
 
+## Âm báo & thông báo tin nhắn
+- Nút 🔔 / 🔕 ở khung chat: bật thì có tiếng "ting" khi người khác nhắn; khi đang ở tab khác, tiêu đề tab hiện số tin chưa đọc và (nếu trình duyệt cho phép) hiện thông báo của hệ điều hành.
+- Thông báo riêng khi có người trả lời tin của bạn, và khi bài bạn chọn bắt đầu phát.
+- Trang `/admin` mặc định tắt âm báo để tiếng "ting" không phát ra loa của phòng.
+- Trên điện thoại, thông báo chỉ hoạt động khi trang đang mở; khi khóa màn hình, trình duyệt tạm dừng trang.
+
 ## Thông báo chạy chữ
 Trang `/admin` → khung **Thông báo chạy chữ**: nhập nội dung → **Đăng**. Dòng chữ chạy ngang liên tục ở đầu trang của mọi người (rê chuột vào để dừng). Công tắc bật / tắt thông báo mà vẫn giữ nội dung; **Xóa** để xóa hẳn.
 
