@@ -733,7 +733,7 @@
     $('#qCount').textContent = s.queue.length;
     if (!s.queue.length) q.append(el('div', { class: 'empty' }, 'Hàng chờ đang trống.'));
     s.queue.forEach((song, i) => q.append(songRow(song, {
-      num: i + 1,
+      num: i + 1, showNote: true,
       actions: [
         el('button', { class: 'icon', title: 'Phát tiếp theo', onclick: () => hapi('/api/host/move', { id: song.id, dir: 'top' }) }, '⤒'),
         el('button', { class: 'icon', title: 'Lên', onclick: () => hapi('/api/host/move', { id: song.id, dir: 'up' }) }, '▲'),

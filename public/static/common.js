@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-11.2';
+const APP_VERSION = '2026-11-11.3';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -59,13 +59,14 @@ async function ownerHash(s) {
   return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function songRow(s, { num, mine, actions = [] } = {}) {
+function songRow(s, { num, mine, actions = [], showNote = false } = {}) {
   return el('div', { class: 'song' },
     num != null ? el('div', { class: 'num' }, String(num)) : null,
     el('img', { src: s.thumb || '', alt: '', loading: 'lazy' }),
     el('div', { class: 'meta' },
       el('div', { class: 'tline' },
-        s.note ? el('span', { class: 'gift', title: 'Lời nhắn: ' + s.note, role: 'button', tabindex: '0', onclick: (e) => { e.preventDefault(); toast('🎁 ' + (s.addedBy || '') + ': ' + s.note); } }, '🎁') : null,
+        // Chỉ báo bài có lời nhắn; nội dung để dành tới lúc bài phát (Admin vẫn xem được để kiểm duyệt)
+        s.note ? el('span', { class: 'gift', title: showNote ? 'Lời nhắn: ' + s.note : 'Bài này có lời nhắn, sẽ hiện lúc bài phát' }, '🎁') : null,
         el('a', { class: 'title', title: s.title + ' — xem trên YouTube', href: 'https://www.youtube.com/watch?v=' + s.videoId, target: '_blank', rel: 'noopener' }, s.title)),
       el('div', { class: 'sub' },
         s.noEmbed || s.embeddable === false ? el('span', { class: 'badge yt', title: 'Chủ video không cho phát trên website khác. Máy phát sẽ mở bài này trong cửa sổ youtube.com.' }, '↗ YouTube') : null,
