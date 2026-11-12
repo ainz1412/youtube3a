@@ -436,6 +436,14 @@
     scWidget.setVolume(curVol());
     scWidget.play();
     scWidget.getDuration((ms) => { if (ms) scSt.d = ms / 1000; });
+    // Bài chỉ có tên tạm lúc thêm -> gửi tên thật, ảnh bìa, thời lượng cho cả phòng
+    const n = state && state.nowPlaying;
+    if (n && n.scPending && scCurrent()) scWidget.getCurrentSound((snd) => {
+      if (!snd || !scCurrent() || !hostConn) return;
+      const art = snd.artwork_url || (snd.user && snd.user.avatar_url) || '';
+      hostConn.send({ type: 'scmeta', id: n.id, title: snd.title, channel: snd.user && snd.user.username,
+        thumb: art.replace('-large.', '-t500x500.'), duration: (snd.duration || snd.full_duration || 0) / 1000 });
+    });
   }
   function bindSc() {
     const E = SC.Widget.Events;

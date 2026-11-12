@@ -61,7 +61,8 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 
 - Người tham gia dán link bài SoundCloud (soundcloud.com/…, m.soundcloud.com/… hoặc link rút gọn on.soundcloud.com/… từ ứng dụng) vào tab **Dán link** hoặc ô tìm kiếm. Không tốn lượt tìm YouTube.
 - Máy phát phát bằng trình phát nhúng chính thức của SoundCloud, **không cần đăng nhập SoundCloud**. Bài công khai phát đầy đủ; bài SoundCloud Go+ chỉ phát đoạn ngắn rồi tự chuyển bài.
-- Chưa hỗ trợ playlist (link /sets/). Bài riêng tư hoặc bị tác giả tắt nhúng sẽ báo lỗi khi thêm.
+- Chưa hỗ trợ playlist (link /sets/). Bài riêng tư hoặc link sai sẽ báo lỗi khi thêm.
+- Bài mà tác giả hạn chế nhúng vẫn thêm được: web đọc tên bài từ trang SoundCloud; nếu không đọc được thì hiện tên tạm theo link và máy phát cập nhật tên thật, ảnh bìa khi bắt đầu phát.
 - Bài SoundCloud có nhãn ☁ SoundCloud trong hàng chờ; thời lượng hiện sau khi máy phát bắt đầu phát bài.
 
 ## Lời nhắn kèm bài & xem video

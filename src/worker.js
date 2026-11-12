@@ -47,39 +47,80 @@ function isSoundCloudUrl(input) {
     return /(^|\.)soundcloud\.com$/.test(u.hostname) || u.hostname === 'snd.sc';
   } catch (e) { return false; }
 }
-// Lấy tên bài, ảnh bìa, mã bài qua oEmbed của SoundCloud (không cần API key)
+const scErr = (msg, status) => Object.assign(new Error(msg), { status });
+const SC_PLAYLIST_MSG = 'Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud';
+const SC_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
+// Tên bài tạm từ đường dẫn: /nghe-si/ten-bai -> "Ten Bai"
+const slugTitle = (s) => decodeURIComponent(s || '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
+// Lấy tên bài, nghệ sĩ, ảnh bìa của một link SoundCloud (không cần API key):
+// 1) oEmbed chính thức  2) nếu tác giả hạn chế nhúng (oEmbed 403) -> đọc thẻ meta của trang bài
+// 3) nếu vẫn không đọc được -> tên tạm từ link, máy phát sẽ cập nhật tên thật khi bắt đầu phát
 async function soundCloudInfo(input) {
   let url = String(input || '').trim();
   const host = new URL(url).hostname;
   if (host === 'on.soundcloud.com' || host === 'snd.sc') {
     // Link rút gọn từ ứng dụng SoundCloud -> lấy link đầy đủ
-    const r = await fetch(url, { redirect: 'follow' });
-    url = r.url;
+    let r = await fetch(url, { redirect: 'manual', headers: { 'user-agent': SC_UA } });
+    const loc = r.headers.get('location');
+    if (loc) url = new URL(loc, url).toString();
+    else { r = await fetch(url, { redirect: 'follow', headers: { 'user-agent': SC_UA } }); url = r.url; }
+    if (/on\.soundcloud\.com|snd\.sc/.test(new URL(url).hostname)) throw scErr('Link rút gọn SoundCloud không mở được, thử dán link đầy đủ của bài', 400);
   }
   const u = new URL(url);
   u.search = ''; u.hash = '';
-  if (u.hostname === 'm.soundcloud.com') u.hostname = 'soundcloud.com';
+  if (u.hostname === 'm.soundcloud.com' || u.hostname === 'www.soundcloud.com') u.hostname = 'soundcloud.com';
+  if (u.hostname !== 'soundcloud.com') throw scErr('Link SoundCloud không hợp lệ', 400);
+  u.pathname = u.pathname.replace(/\/+$/, '');
   url = u.toString();
-  if (/\/sets\//.test(u.pathname)) { const e = new Error('Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud'); e.status = 400; throw e; }
-  const r = await fetch('https://soundcloud.com/oembed?format=json&url=' + encodeURIComponent(url));
-  if (!r.ok) { const e = new Error('Không tìm thấy bài SoundCloud này (có thể là bài riêng tư hoặc link sai)'); e.status = 404; throw e; }
-  const j = await r.json();
-  let html = j.html || '';
-  for (let i = 0; i < 2; i++) { try { html = decodeURIComponent(html); } catch (e) { break; } }
-  if (/\/playlists\//i.test(html)) { const e = new Error('Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud'); e.status = 400; throw e; }
-  const m = /tracks(?:\/|:)(\d+)/i.exec(html);
-  // Không đọc được mã bài -> dùng đường dẫn bài làm mã (vẫn chống trùng được)
-  const id = m ? m[1] : u.pathname.replace(/^\/+|\/+$/g, '').toLowerCase().slice(0, 36);
-  if (!id || !id.includes('/') && !m) { const e = new Error('Link này không phải là một bài hát SoundCloud'); e.status = 400; throw e; }
-  const channel = decodeEntities(j.author_name || 'SoundCloud');
-  let title = decodeEntities(j.title || 'SoundCloud');
-  // oEmbed trả tên dạng "Tên bài by Nghệ sĩ" -> bỏ phần " by Nghệ sĩ" vì đã hiện ở dòng nghệ sĩ
-  if (title.toLowerCase().endsWith(' by ' + channel.toLowerCase())) title = title.slice(0, -(channel.length + 4));
-  return {
-    source: 'sc', videoId: 'sc:' + id, scUrl: url,
-    title, channel,
-    thumb: j.thumbnail_url || '', duration: 0, embeddable: true,
-  };
+  const parts = u.pathname.split('/').filter(Boolean);
+  if (parts[1] === 'sets') throw scErr(SC_PLAYLIST_MSG, 400);
+  if (parts.length < 2 || ['you', 'discover', 'search', 'stream', 'charts', 'pages', 'settings'].includes(parts[0]))
+    throw scErr('Link này không phải là một bài hát SoundCloud', 400);
+  // Mã bài = đường dẫn "nghe-si/ten-bai" (giống nhau dù dán link đầy đủ hay link rút gọn -> chống trùng)
+  const id = parts.slice(0, 2).join('/').toLowerCase().slice(0, 70);
+  const base = { source: 'sc', videoId: 'sc:' + id, scUrl: url, duration: 0, embeddable: true };
+
+  const r = await fetch('https://soundcloud.com/oembed?format=json&url=' + encodeURIComponent(url), { headers: { 'user-agent': SC_UA } });
+  if (r.ok) {
+    const j = await r.json();
+    let html = j.html || '';
+    for (let i = 0; i < 2; i++) { try { html = decodeURIComponent(html); } catch (e) { break; } }
+    if (/\/playlists\//i.test(html)) throw scErr(SC_PLAYLIST_MSG, 400);
+    if (!/\/tracks\/|tracks:/i.test(html)) throw scErr('Link này không phải là một bài hát SoundCloud', 400);
+    const channel = decodeEntities(j.author_name || 'SoundCloud');
+    let title = decodeEntities(j.title || 'SoundCloud');
+    // oEmbed trả tên dạng "Tên bài by Nghệ sĩ" -> bỏ phần " by Nghệ sĩ" vì đã hiện ở dòng nghệ sĩ
+    if (title.toLowerCase().endsWith(' by ' + channel.toLowerCase())) title = title.slice(0, -(channel.length + 4));
+    return { ...base, title, channel, thumb: j.thumbnail_url || '' };
+  }
+  if (r.status === 404) throw scErr('Không tìm thấy bài SoundCloud này (có thể là bài riêng tư hoặc link sai)', 404);
+
+  // oEmbed bị từ chối (thường do tác giả chỉ cho nhúng trên trang của họ) -> thử đọc trang bài
+  try {
+    const pr = await fetch(url, { headers: { 'user-agent': SC_UA, 'accept-language': 'en-US,en;q=0.8' } });
+    if (pr.status === 404) throw scErr('Không tìm thấy bài SoundCloud này (có thể là bài riêng tư hoặc link sai)', 404);
+    if (pr.ok) {
+      const page = (await pr.text()).slice(0, 400000);
+      const meta = (prop) => {
+        const m = new RegExp('<meta[^>]+(?:property|name)="' + prop + '"[^>]*content="([^"]*)"', 'i').exec(page)
+          || new RegExp('<meta[^>]+content="([^"]*)"[^>]*(?:property|name)="' + prop + '"', 'i').exec(page);
+        return m ? decodeEntities(m[1]) : '';
+      };
+      const type = meta('og:type');
+      if (/playlist|album/i.test(type)) throw scErr(SC_PLAYLIST_MSG, 400);
+      const title = meta('og:title');
+      if (title && /soundcloud:\/\/sounds:\d+/.test(page)) {
+        // <title>Stream TÊN BÀI by NGHỆ SĨ | Listen online ...</title>
+        const t = /<title[^>]*>([^<]*)<\/title>/i.exec(page);
+        const by = t ? / by (.+?) \| /.exec(decodeEntities(t[1])) : null;
+        const dur = /"full_duration":(\d+)/.exec(page);
+        return { ...base, title, channel: by ? by[1] : parts[0], thumb: meta('og:image'), duration: dur ? Math.round(+dur[1] / 1000) : 0 };
+      }
+    }
+  } catch (e) { if (e.status) throw e; }
+  // Không đọc được thông tin -> tên tạm, máy phát cập nhật khi phát
+  return { ...base, title: slugTitle(parts[1]), channel: parts[0], thumb: '', scPending: true };
 }
 
 function parseISODuration(d) {
@@ -89,6 +130,8 @@ function parseISODuration(d) {
 }
 
 const decodeEntities = (s) => String(s || '')
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d))
   .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 async function sha(s) {
@@ -115,7 +158,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-12.3';
+const APP_VERSION = '2026-11-12.4';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -464,7 +507,7 @@ export class Room extends DurableObject {
           thumb: v.thumb, duration: v.duration, addedBy: name, owner, addedAt: Date.now(),
           // Chủ video không cho phát nhúng -> máy phát sẽ mở bài này trên youtube.com
           ...(v.embeddable ? {} : { noEmbed: true }),
-          ...(v.source === 'sc' ? { source: 'sc', scUrl: v.scUrl } : {}),
+          ...(v.source === 'sc' ? { source: 'sc', scUrl: v.scUrl, ...(v.scPending ? { scPending: true } : {}) } : {}),
           ...(cleanNote(body.note) ? { note: cleanNote(body.note) } : {}),
         };
         this.state.queue.push(song);
@@ -759,10 +802,21 @@ export class Room extends DurableObject {
       if (!actions.includes(m.action)) return;
       const value = Number.isFinite(+m.value) ? Math.max(0, Math.min(m.action === 'volume' ? 100 : 86400, +m.value)) : null;
       this.broadcastHosts('cmd', { action: m.action, value, from: a.deviceId });
+    } else if (m.type === 'scmeta' && this.speaker && a.deviceId === this.speaker.id) {
+      // Máy phát đọc được tên thật của bài SoundCloud (bài chỉ có tên tạm lúc thêm)
+      const np = this.state.nowPlaying;
+      if (!np || np.source !== 'sc' || !np.scPending || np.id !== m.id) return;
+      const str = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+      if (str(m.title, 200)) np.title = str(m.title, 200);
+      if (str(m.channel, 100)) np.channel = str(m.channel, 100);
+      if (/^https:\/\/[a-z0-9.-]+\.sndcdn\.com\//i.test(String(m.thumb || ''))) np.thumb = String(m.thumb).slice(0, 300);
+      if (Number.isFinite(+m.duration) && +m.duration > 0) np.duration = Math.min(86400, Math.round(+m.duration));
+      delete np.scPending;
+      this.changed();
     } else if (m.type === 'status' && this.speaker && a.deviceId === this.speaker.id) {
       // Máy phát báo trạng thái -> chuyển cho các thiết bị điều khiển
       const n = (v, max) => (Number.isFinite(+v) ? Math.max(0, Math.min(max, +v)) : 0);
-      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 40), tab: !!m.tab, at: Date.now() };
+      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 80), tab: !!m.tab, at: Date.now() };
       // Bài SoundCloud chưa biết thời lượng lúc thêm -> lấy từ máy phát
       const np = this.state.nowPlaying;
       if (np && np.source === 'sc' && !np.duration && this.player.videoId === np.videoId && this.player.d > 0) {
