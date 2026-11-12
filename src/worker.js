@@ -40,6 +40,44 @@ function extractVideoId(input) {
   return null;
 }
 
+// ---------- SoundCloud (chỉ thêm bằng link, phát bằng trình phát nhúng chính thức) ----------
+function isSoundCloudUrl(input) {
+  try {
+    const u = new URL(String(input || '').trim());
+    return /(^|\.)soundcloud\.com$/.test(u.hostname) || u.hostname === 'snd.sc';
+  } catch (e) { return false; }
+}
+// Lấy tên bài, ảnh bìa, mã bài qua oEmbed của SoundCloud (không cần API key)
+async function soundCloudInfo(input) {
+  let url = String(input || '').trim();
+  const host = new URL(url).hostname;
+  if (host === 'on.soundcloud.com' || host === 'snd.sc') {
+    // Link rút gọn từ ứng dụng SoundCloud -> lấy link đầy đủ
+    const r = await fetch(url, { redirect: 'follow' });
+    url = r.url;
+  }
+  const u = new URL(url);
+  u.search = ''; u.hash = '';
+  if (u.hostname === 'm.soundcloud.com') u.hostname = 'soundcloud.com';
+  url = u.toString();
+  if (/\/sets\//.test(u.pathname)) { const e = new Error('Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud'); e.status = 400; throw e; }
+  const r = await fetch('https://soundcloud.com/oembed?format=json&url=' + encodeURIComponent(url));
+  if (!r.ok) { const e = new Error('Không tìm thấy bài SoundCloud này (có thể là bài riêng tư hoặc link sai)'); e.status = 404; throw e; }
+  const j = await r.json();
+  let html = j.html || '';
+  try { html = decodeURIComponent(html); } catch (e) {}
+  if (/\/playlists\//i.test(html)) { const e = new Error('Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud'); e.status = 400; throw e; }
+  const m = /tracks(?:\/|:)(\d+)/i.exec(html);
+  // Không đọc được mã bài -> dùng đường dẫn bài làm mã (vẫn chống trùng được)
+  const id = m ? m[1] : u.pathname.replace(/^\/+|\/+$/g, '').toLowerCase().slice(0, 36);
+  if (!id || !id.includes('/') && !m) { const e = new Error('Link này không phải là một bài hát SoundCloud'); e.status = 400; throw e; }
+  return {
+    source: 'sc', videoId: 'sc:' + id, scUrl: url,
+    title: decodeEntities(j.title || 'SoundCloud'), channel: decodeEntities(j.author_name || 'SoundCloud'),
+    thumb: j.thumbnail_url || '', duration: 0, embeddable: true,
+  };
+}
+
 function parseISODuration(d) {
   const m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d || '');
   if (!m) return 0;
@@ -73,7 +111,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-12.1';
+const APP_VERSION = '2026-11-12.2';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -356,9 +394,15 @@ export class Room extends DurableObject {
 
       if (request.method === 'GET' && p === '/api/search') {
         if (!this.pinOk(url.searchParams.get('pin'))) return json({ error: 'Sai mã phòng' }, 403);
-        if (!c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
-        const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
+        const q = (url.searchParams.get('q') || '').trim().slice(0, 300);
         if (!q) return json({ error: 'Thiếu từ khóa' }, 400);
+        // Dán link SoundCloud vào ô tìm: không dùng lượt tìm YouTube
+        if (isSoundCloudUrl(q)) {
+          if (this.limited('sc:' + ip, 20, 60_000)) return json({ error: 'Bạn thao tác nhanh quá, chờ 1 phút nhé' }, 429);
+          try { return json({ items: [await soundCloudInfo(q)] }); }
+          catch (e) { return json({ error: e.message }, e.status || 500); }
+        }
+        if (!c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
         const id = extractVideoId(q);
         if (id && q.length > 11) return json({ items: await this.ytVideos([id]) });
         if (this.limited('search:' + ip, 10, 60_000)) return json({ error: 'Bạn tìm nhanh quá, chờ 1 phút nhé' }, 429);
@@ -388,18 +432,24 @@ export class Room extends DurableObject {
         if (!name) return json({ error: 'Hãy nhập tên trước' }, 400);
         const cid = String(body.cid || '').slice(0, 64);
         if (!cid) return json({ error: 'Thiếu mã thiết bị' }, 400);
-        const videoId = extractVideoId(body.videoId || body.url);
-        if (!videoId) return json({ error: 'Link YouTube không hợp lệ' }, 400);
-        if (!c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
+        const scLink = isSoundCloudUrl(body.url) ? body.url : isSoundCloudUrl(body.scUrl) ? body.scUrl : null;
+        const videoId = scLink ? null : extractVideoId(body.videoId || body.url);
+        if (!scLink && !videoId) return json({ error: 'Link YouTube hoặc SoundCloud không hợp lệ' }, 400);
+        if (!scLink && !c.apiKey) return json({ error: 'Admin chưa cài YOUTUBE_API_KEY' }, 500);
         if (this.limited('add:' + ip, 8, 60_000)) return json({ error: 'Bạn thêm nhanh quá, chờ chút nhé' }, 429);
 
         const owner = await sha(cid);
-        const dupe = () => this.state.nowPlaying?.videoId === videoId || this.state.queue.some((s) => s.videoId === videoId);
-        if (dupe()) return json({ error: 'Bài này đã có trong danh sách rồi' }, 409);
+        let key = videoId;
+        const dupe = () => this.state.nowPlaying?.videoId === key || this.state.queue.some((s) => s.videoId === key);
+        if (key && dupe()) return json({ error: 'Bài này đã có trong danh sách rồi' }, 409);
         if (c.maxSongs && !this.isHost(body.pw) && this.state.queue.filter((s) => s.owner === owner).length >= c.maxSongs)
           return json({ error: `Mỗi người chỉ được xếp tối đa ${c.maxSongs} bài trong hàng chờ` }, 429);
 
-        const [v] = await this.ytVideos([videoId]);
+        let v;
+        if (scLink) {
+          try { v = await soundCloudInfo(scLink); } catch (e) { return json({ error: e.message }, e.status || 500); }
+          key = v.videoId;
+        } else [v] = await this.ytVideos([videoId]);
         if (!v) return json({ error: 'Không tìm thấy video' }, 404);
         if (v.live) return json({ error: 'Không hỗ trợ video đang livestream' }, 400);
         if (c.maxDur && v.duration > c.maxDur * 60) return json({ error: `Video dài quá ${c.maxDur} phút` }, 400);
@@ -410,11 +460,12 @@ export class Room extends DurableObject {
           thumb: v.thumb, duration: v.duration, addedBy: name, owner, addedAt: Date.now(),
           // Chủ video không cho phát nhúng -> máy phát sẽ mở bài này trên youtube.com
           ...(v.embeddable ? {} : { noEmbed: true }),
+          ...(v.source === 'sc' ? { source: 'sc', scUrl: v.scUrl } : {}),
           ...(cleanNote(body.note) ? { note: cleanNote(body.note) } : {}),
         };
         this.state.queue.push(song);
         if (this.ranks[owner] && this.ranks[owner].name !== name) { this.ranks[owner].name = name; this.ctx.storage.put('ranks', this.ranks); }
-        this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}`);
+        this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}${song.source === 'sc' ? ' (SoundCloud)' : ''}`);
         if (!this.state.nowPlaying) this.playNext(); else this.changed();
         return json({ ok: true, song });
       }
@@ -545,7 +596,8 @@ export class Room extends DurableObject {
                 153: 'YouTube từ chối trình phát nhúng',
               };
               const code = Number(body.code);
-              const why = reasons[code] ? `${reasons[code]}, mã ${code}` : (Number.isFinite(code) ? `mã lỗi ${code}` : 'không rõ lý do');
+              const why = body.code === 'sc' ? 'SoundCloud không phát được bài này, có thể bị giới hạn khu vực hoặc đã bị gỡ'
+                : reasons[code] ? `${reasons[code]}, mã ${code}` : (Number.isFinite(code) ? `mã lỗi ${code}` : 'không rõ lý do');
               this.systemMsg(`⚠️ Không phát được "${s.nowPlaying.title}" (${why}), chuyển bài.`);
               this.playNext();
             }
@@ -706,7 +758,13 @@ export class Room extends DurableObject {
     } else if (m.type === 'status' && this.speaker && a.deviceId === this.speaker.id) {
       // Máy phát báo trạng thái -> chuyển cho các thiết bị điều khiển
       const n = (v, max) => (Number.isFinite(+v) ? Math.max(0, Math.min(max, +v)) : 0);
-      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 11), tab: !!m.tab, at: Date.now() };
+      this.player = { paused: !!m.paused, volume: n(m.volume, 100), t: n(m.t, 86400), d: n(m.d, 86400), videoId: String(m.videoId || '').slice(0, 40), tab: !!m.tab, at: Date.now() };
+      // Bài SoundCloud chưa biết thời lượng lúc thêm -> lấy từ máy phát
+      const np = this.state.nowPlaying;
+      if (np && np.source === 'sc' && !np.duration && this.player.videoId === np.videoId && this.player.d > 0) {
+        np.duration = Math.round(this.player.d);
+        this.changed();
+      }
       this.broadcast('player', { ...this.player, tab: !!m.tab }, ws);
     }
   }

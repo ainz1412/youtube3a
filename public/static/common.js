@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-12.1';
+const APP_VERSION = '2026-11-12.2';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -13,6 +13,11 @@ function el(tag, attrs = {}, ...children) {
   for (const c of children.flat()) if (c != null) e.append(c instanceof Node ? c : document.createTextNode(c));
   return e;
 }
+
+// Link mở bài gốc (YouTube hoặc SoundCloud)
+const isSc = (s) => !!s && s.source === 'sc';
+const songUrl = (s) => isSc(s) ? s.scUrl : 'https://www.youtube.com/watch?v=' + s.videoId;
+const songSite = (s) => isSc(s) ? 'SoundCloud' : 'YouTube';
 
 function fmtDur(s) {
   s = Math.round(s || 0);
@@ -115,14 +120,16 @@ function songRow(s, { num, mine, actions = [], showNote = false } = {}) {
       el('div', { class: 'tline' },
         // Chỉ báo bài có lời nhắn; nội dung để dành tới lúc bài phát (Admin vẫn xem được để kiểm duyệt)
         s.note ? el('span', { class: 'gift', title: showNote ? 'Lời nhắn: ' + s.note : 'Bài này có lời nhắn, sẽ hiện lúc bài phát' }, '🎁') : null,
-        el('a', { class: 'title', title: s.title + ' — xem trên YouTube', href: 'https://www.youtube.com/watch?v=' + s.videoId, target: '_blank', rel: 'noopener' }, s.title)),
+        el('a', { class: 'title', title: s.title + ' — mở trên ' + songSite(s), href: songUrl(s), target: '_blank', rel: 'noopener' }, s.title)),
       el('div', { class: 'sub' },
+        isSc(s) ? el('span', { class: 'badge sc', title: 'Bài từ SoundCloud' }, '☁ SoundCloud') : null,
+        isSc(s) ? ' ' : null,
         s.noEmbed || s.embeddable === false ? el('span', { class: 'badge yt', title: 'Chủ video không cho phát trên website khác. Máy phát sẽ mở bài này trong cửa sổ youtube.com.' }, '↗ YouTube') : null,
         s.noEmbed || s.embeddable === false ? ' ' : null,
         s.addedBy ? fameBadge(s.addedBy, s.owner, { mine }) : null,
         s.addedBy ? ' ' : null,
         s.channel)),
-    el('div', { class: 'dur' }, fmtDur(s.duration)),
+    el('div', { class: 'dur' }, s.duration ? fmtDur(s.duration) : isSc(s) ? '' : fmtDur(0)),
     actions.length ? el('div', { class: 'actions' }, actions) : null);
 }
 

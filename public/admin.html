@@ -16,6 +16,7 @@
   #left { overflow-y: auto; }
   .playerWrap { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: var(--radius); overflow: hidden; max-height: 52vh; flex: none; }
   .playerWrap iframe, #player { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .playerWrap #scFrame { border: 0; background: #000; z-index: 1; }
   #startOverlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.88); z-index: 2; text-align: center; padding: 20px; }
   .ov-title { font-size: 19px; font-weight: 700; margin: 0 0 6px; }
   .ov-icon { font-size: 34px; margin-bottom: 6px; }
@@ -91,6 +92,7 @@
   <div id="left">
     <div class="playerWrap">
       <div id="player"></div>
+      <iframe id="scFrame" class="hidden" title="SoundCloud" allow="autoplay; encrypted-media"></iframe>
       <div id="startOverlay">
         <div id="ovStart">
           <p class="ov-title">Sẵn sàng phát nhạc cho cả phòng</p>
@@ -303,7 +305,7 @@
   }
 
   // ---- YouTube player (chỉ phát trên thiết bị là máy phát) ----
-  const isPlaying = () => playerReady && [YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(player.getPlayerState());
+  const isPlaying = () => scOn ? !scSt.paused : playerReady && [YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(player.getPlayerState());
   window.onYouTubeIframeAPIReady = () => {
     player = new YT.Player('player', {
       width: '100%', height: '100%',
@@ -312,7 +314,7 @@
         onReady: () => { playerReady = true; player.setVolume(+(localStorage.getItem('jb_vol') || 80)); lockRate(); sync(); },
         onPlaybackRateChange: () => lockRate(),
         onStateChange: (e) => {
-          if (!controlling()) return;
+          if (!controlling() || scOn) return;
           if (e.data === YT.PlayerState.ENDED && state?.nowPlaying) hapi('/api/host/ended', { id: state.nowPlaying.id, deviceId });
           if (e.data === YT.PlayerState.PAUSED) { setPPLabel(true); if (!state?.paused) hapi('/api/host/paused', { paused: true, deviceId }); }
           if (e.data === YT.PlayerState.PLAYING) { if (!tabMode) closeYtWindow(); lockRate(); setPPLabel(false); if (state?.paused) hapi('/api/host/paused', { paused: false, deviceId }); }
@@ -320,7 +322,7 @@
         },
         onError: (e) => {
           console.warn('YT error', e.data);
-          if (!controlling() || !state?.nowPlaying) return;
+          if (!controlling() || scOn || !state?.nowPlaying) return;
           const n = state.nowPlaying;
           // Lỗi 5 (trình phát HTML5) thường chỉ tạm thời: thử phát lại 1 lần trước khi bỏ qua bài
           if (e.data === 5 && retriedId !== n.id) {
@@ -343,7 +345,7 @@
   // làm thay đổi tốc độ, tự đưa về 1x và báo cho Admin biết.
   let rateWarned = false;
   function lockRate() {
-    if (!controlling() || !playerReady || typeof player.getPlaybackRate !== 'function') return;
+    if (!controlling() || scOn || !playerReady || typeof player.getPlaybackRate !== 'function') return;
     const r = player.getPlaybackRate();
     $('#rate').textContent = 'Tốc độ ' + r + 'x';
     $('#rate').classList.toggle('me', r !== 1);
@@ -413,12 +415,102 @@
   }
   $('#tabOpen').addEventListener('click', () => openYtWindow(true));
 
+  // ---- SoundCloud: trình phát nhúng chính thức (không cần đăng nhập) ----
+  let scWidget = null, scOn = false, scApi = null;
+  const scSt = { id: null, paused: true, t: 0, d: 0, loading: false, endSent: null, playedAt: 0 };
+  const SC_OPTS = { auto_play: true, visual: true, hide_related: true, show_comments: false, show_reposts: false, show_teaser: false, buying: false, sharing: false, download: false };
+  const curVol = () => +(localStorage.getItem('jb_vol') || 80);
+  function loadScApi() {
+    if (window.SC && SC.Widget) return Promise.resolve();
+    if (!scApi) scApi = new Promise((ok, fail) => {
+      const s = document.createElement('script');
+      s.src = 'https://w.soundcloud.com/player/api.js';
+      s.onload = ok;
+      s.onerror = () => { scApi = null; fail(new Error('Không tải được trình phát SoundCloud')); };
+      document.head.append(s);
+    });
+    return scApi;
+  }
+  const scCurrent = () => scOn && state?.nowPlaying?.id === scSt.id;
+  function scAfterLoad() {
+    scWidget.setVolume(curVol());
+    scWidget.play();
+    scWidget.getDuration((ms) => { if (ms) scSt.d = ms / 1000; });
+  }
+  function bindSc() {
+    const E = SC.Widget.Events;
+    scWidget.bind(E.READY, () => { if (scOn) scAfterLoad(); });
+    scWidget.bind(E.PLAY, () => {
+      if (!scCurrent()) return;
+      scSt.loading = false; scSt.paused = false; scSt.playedAt = Date.now();
+      scWidget.getDuration((ms) => { if (ms) scSt.d = ms / 1000; });
+      setPPLabel(false);
+      if (state?.paused) hapi('/api/host/paused', { paused: false, deviceId });
+      reportStatus();
+    });
+    scWidget.bind(E.PAUSE, () => {
+      if (!scCurrent() || scSt.loading) return;
+      scSt.paused = true; setPPLabel(true);
+      // Hết bài SoundCloud cũng phát sự kiện tạm dừng -> không báo "tạm dừng" lúc sát cuối bài
+      if (scSt.d && scSt.t >= scSt.d - 1.5) return;
+      if (!state?.paused) hapi('/api/host/paused', { paused: true, deviceId });
+      reportStatus();
+    });
+    scWidget.bind(E.PLAY_PROGRESS, (e) => { if (scCurrent() && e && e.currentPosition != null) scSt.t = e.currentPosition / 1000; });
+    scWidget.bind(E.FINISH, () => {
+      if (!scCurrent() || !controlling() || scSt.endSent === scSt.id) return;
+      scSt.endSent = scSt.id;
+      hapi('/api/host/ended', { id: scSt.id, deviceId });
+    });
+    scWidget.bind(E.ERROR, () => {
+      if (!scCurrent() || !controlling() || scSt.endSent === scSt.id) return;
+      scSt.endSent = scSt.id;
+      hapi('/api/host/error', { id: scSt.id, code: 'sc', deviceId });
+    });
+  }
+  async function playSc(n) {
+    scOn = true;
+    Object.assign(scSt, { id: n.id, paused: true, t: 0, d: n.duration || 0, loading: true, endSent: null, playedAt: 0 });
+    if (playerReady) player.stopVideo();
+    $('#scFrame').classList.remove('hidden');
+    try { await loadScApi(); }
+    catch (e) { toast(e.message, true); if (scCurrent()) hapi('/api/host/error', { id: n.id, code: 'sc', deviceId }); return; }
+    if (!scCurrent()) return;
+    if (!scWidget) {
+      const f = $('#scFrame');
+      f.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(n.scUrl) + '&' + new URLSearchParams(SC_OPTS);
+      scWidget = SC.Widget(f);
+      bindSc();
+    } else {
+      scWidget.load(n.scUrl, { ...SC_OPTS, callback: () => { if (scCurrent()) scAfterLoad(); } });
+    }
+    // Trình duyệt chặn tự phát -> nhắc Admin bấm phát
+    setTimeout(() => { if (scCurrent() && !scSt.playedAt && controlling()) toast('Bài SoundCloud chưa tự phát được — bấm ▶ Phát tiếp hoặc bấm phát trong khung SoundCloud.', true); }, 8000);
+  }
+  function stopSc() {
+    if (!scOn) return;
+    scOn = false; scSt.id = null;
+    if (scWidget) { try { scWidget.pause(); } catch (e) {} }
+    $('#scFrame').classList.add('hidden');
+  }
+  // Điều khiển chung cho cả YouTube và SoundCloud
+  const pPlay = () => scOn ? scWidget && scWidget.play() : player.playVideo();
+  const pPause = () => scOn ? scWidget && scWidget.pause() : player.pauseVideo();
+  const pToggle = () => (isPlaying() ? pPause() : pPlay());
+  const pSeek = (sec) => scOn ? scWidget && scWidget.seekTo(Math.round(sec * 1000)) : player.seekTo(sec, true);
+  const pTime = () => scOn ? scSt.t : player.getCurrentTime() || 0;
+  const pDur = () => scOn ? scSt.d : player.getDuration() || 0;
+  const pVol = () => scOn ? curVol() : player.getVolume();
+  function pSetVol(v) { if (playerReady) player.setVolume(v); if (scWidget) scWidget.setVolume(v); }
+
   function sync() {
     if (!playerReady || !controlling() || !state) return;
     const n = state.nowPlaying;
-    if (!n) { if (loadedId) { player.stopVideo(); loadedId = null; } endTabMode(); return; }
+    if (!n) { if (loadedId) { player.stopVideo(); stopSc(); loadedId = null; } endTabMode(); return; }
     if (n.id !== loadedId) {
       loadedId = n.id;
+      if (isSc(n)) { if (tabMode) endTabMode({ close: false }); playSc(n); return; }
+      stopSc();
       if (n.noEmbed || noEmbed.has(n.videoId)) { startTabMode(n); return; }   // bài bị chặn nhúng -> mở thẳng youtube.com
       if (tabMode) endTabMode({ close: false });                // bài mới: thử phát nhúng trước
       player.loadVideoById(n.videoId);
@@ -452,7 +544,7 @@
       speaker = r.speaker;
       started = true;
       refreshMode(); sync();
-      if (playerReady && state?.nowPlaying && loadedId) player.playVideo();
+      if (playerReady && state?.nowPlaying && loadedId) pPlay();
       setTimeout(reportStatus, 800);
     } catch (e) { toast(e.message, true); }
   }
@@ -468,6 +560,7 @@
       // Thiết bị khác đã nhận làm máy phát -> dừng phát ở đây
       started = false; loadedId = null;
       if (playerReady) player.stopVideo();
+      stopSc();
       endTabMode();
       toast(`Nhạc đã chuyển sang ${sp.label}. Thiết bị này giờ là điều khiển từ xa.`);
     }
@@ -480,8 +573,8 @@
       return;
     }
     hostConn.send({
-      type: 'status', paused: !isPlaying(), volume: player.getVolume(),
-      t: player.getCurrentTime() || 0, d: player.getDuration() || 0,
+      type: 'status', paused: !isPlaying(), volume: pVol(),
+      t: pTime(), d: pDur(),
       videoId: state?.nowPlaying?.videoId || '',
     });
   }
@@ -491,11 +584,11 @@
       if (c.action === 'toggle' || (c.action === 'pause' && !tabMode.pausedAt) || (c.action === 'play' && tabMode.pausedAt)) toggleTabPause();
       return;
     }
-    if (c.action === 'toggle') isPlaying() ? player.pauseVideo() : player.playVideo();
-    else if (c.action === 'pause') player.pauseVideo();
-    else if (c.action === 'play') player.playVideo();
-    else if (c.action === 'volume' && c.value != null) { player.setVolume(c.value); $('#vol').value = c.value; localStorage.setItem('jb_vol', c.value); }
-    else if (c.action === 'seek' && c.value != null) player.seekTo(c.value, true);
+    if (c.action === 'toggle') pToggle();
+    else if (c.action === 'pause') pPause();
+    else if (c.action === 'play') pPlay();
+    else if (c.action === 'volume' && c.value != null) { localStorage.setItem('jb_vol', c.value); pSetVol(c.value); $('#vol').value = c.value; }
+    else if (c.action === 'seek' && c.value != null) pSeek(c.value);
     setTimeout(reportStatus, 400);
   }
   let volDragging = false;
@@ -510,7 +603,7 @@
   // ---- Điều khiển ----
   function setPPLabel(paused) { $('#playPause').textContent = paused ? '▶ Phát tiếp' : '⏸ Tạm dừng'; }
   $('#playPause').addEventListener('click', () => {
-    if (controlling()) { if (tabMode) toggleTabPause(); else if (playerReady) isPlaying() ? player.pauseVideo() : player.playVideo(); }
+    if (controlling()) { if (tabMode) toggleTabPause(); else if (playerReady) pToggle(); }
     else {
       if (!speaker || !speaker.online) return toast('Máy phát đang tắt. Hãy mở trang Admin trên máy nối loa.', true);
       sendCmd('toggle');
@@ -525,8 +618,8 @@
   $('#vol').addEventListener('input', (e) => {
     const v = +e.target.value;
     if (controlling()) {
-      if (playerReady) player.setVolume(v);
       localStorage.setItem('jb_vol', v);
+      pSetVol(v);
       clearTimeout(volTimer); volTimer = setTimeout(reportStatus, 300);
     } else {
       clearTimeout(volTimer); volTimer = setTimeout(() => sendCmd('volume', v), 120);
@@ -537,7 +630,7 @@
     const n = state?.nowPlaying; if (!n) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    if (controlling()) { if (playerReady) { player.seekTo(frac * (player.getDuration() || n.duration), true); setTimeout(reportStatus, 400); } }
+    if (controlling()) { if (playerReady) { pSeek(frac * (pDur() || n.duration)); setTimeout(reportStatus, 400); } }
     else {
       const d = (remote && remote.d) || n.duration;
       sendCmd('seek', Math.round(frac * d));
@@ -576,7 +669,7 @@
     } else if (controlling()) {
       lockRate();
       if (!playerReady || !n || typeof player.getCurrentTime !== 'function') return;
-      drawProgress(player.getCurrentTime() || 0, player.getDuration() || n.duration || 0);
+      drawProgress(pTime(), pDur() || n.duration || 0);
       if (tick % 5 === 0) reportStatus();
     } else if (n && remote && (!remote.videoId || remote.videoId === n.videoId)) {
       const d = remote.d || n.duration;
@@ -731,7 +824,8 @@
     if (s.nowPlaying) {
       const n = s.nowPlaying;
       now.append(el('div', { class: 'np-title' }, n.title),
-        el('div', { class: 'np-sub' }, n.channel, ' • Chọn bởi ', fameBadge(n.addedBy, n.owner),
+        el('div', { class: 'np-sub' }, isSc(n) ? el('span', { class: 'badge sc' }, '☁ SoundCloud') : null, isSc(n) ? ' ' : null,
+          n.channel, ' • Chọn bởi ', fameBadge(n.addedBy, n.owner),
           voteBar(n, s.nowVotes, 'host', (v) => hapi('/api/vote', { id: n.id, v })),
           n.note ? el('span', {}, ' • 🎁 ', n.note, ' ', el('button', { class: 'icon', title: 'Sửa / xóa lời nhắn', onclick: () => adminNote(n) }, '✏️')) : null));
       applyNowTint($('#nowPanel'), n.thumb);

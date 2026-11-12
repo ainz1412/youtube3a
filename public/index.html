@@ -74,7 +74,7 @@
     <h2>Thêm bài hát</h2>
     <div class="tabs">
       <button class="active" data-tab="search">Tìm trên YouTube</button>
-      <button data-tab="link">Dán link YouTube</button>
+      <button data-tab="link">Dán link</button>
     </div>
     <form class="searchbar" id="searchForm">
       <input type="text" id="searchInput" placeholder="Bạn muốn nghe gì?" autocomplete="off" enterkeyhint="search">
@@ -82,7 +82,7 @@
     </form>
     <div class="squota" id="squota"></div>
     <form class="searchbar hidden" id="linkForm">
-      <input type="text" id="linkInput" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+      <input type="text" id="linkInput" placeholder="Link YouTube hoặc SoundCloud" autocomplete="off">
       <button class="primary" type="submit">Thêm</button>
     </form>
     <div class="note-input">
@@ -92,7 +92,7 @@
     <div class="scroll" id="results" style="margin-top:10px">
       <div class="empty">Tìm một bài rồi bấm <b>Thêm</b> để xếp vào hàng chờ.</div>
     </div>
-    <div class="legal-links">Video và dữ liệu từ <a href="https://www.youtube.com" target="_blank" rel="noopener">YouTube</a> · Sử dụng YouTube API Services · <a href="/terms">Điều khoản</a> · <a href="/privacy">Quyền riêng tư</a></div>
+    <div class="legal-links">Video và dữ liệu từ <a href="https://www.youtube.com" target="_blank" rel="noopener">YouTube</a> và <a href="https://soundcloud.com" target="_blank" rel="noopener">SoundCloud</a> · Sử dụng YouTube API Services · <a href="/terms">Điều khoản</a> · <a href="/privacy">Quyền riêng tư</a></div>
   </section>
 
   <div id="mid">
@@ -228,8 +228,9 @@
       now.append(el('div', { class: 'now' },
         el('img', { src: n.thumb, alt: '' }),
         el('div', { style: 'min-width:0' },
-          el('a', { class: 'title', href: 'https://www.youtube.com/watch?v=' + n.videoId, target: '_blank', rel: 'noopener', title: 'Xem trên YouTube', style: 'color:inherit;text-decoration:none' }, n.title),
-          el('div', { class: 'np-sub' }, n.channel, ' • ', fmtDur(n.duration), s.paused ? ' • Tạm dừng' : ''),
+          el('a', { class: 'title', href: songUrl(n), target: '_blank', rel: 'noopener', title: 'Mở trên ' + songSite(n), style: 'color:inherit;text-decoration:none' }, n.title),
+          el('div', { class: 'np-sub' }, isSc(n) ? el('span', { class: 'badge sc' }, '☁ SoundCloud') : null, isSc(n) ? ' ' : null,
+            n.channel, n.duration ? ' • ' + fmtDur(n.duration) : '', s.paused ? ' • Tạm dừng' : ''),
           el('div', { class: 'np-by' }, 'Chọn bởi ', fameBadge(n.addedBy, n.owner, { mine: n.owner === myOwner }),
             voteBar(n, s.nowVotes, myOwner, (v) => vote(n, v)),
             n.owner === myOwner ? el('button', { class: 'ghost skip-btn', type: 'button', title: 'Bỏ qua bài bạn chọn', onclick: (e) => skipMine(n, e.currentTarget) }, '⏭ Bỏ qua') : null))));
@@ -344,8 +345,16 @@
   function syncVideo() {
     if (!vpOn) return;
     const n = current && current.nowPlaying;
+    $('#muteBtn').classList.toggle('hidden', isSc(n));
     const ytLink = (id) => el('a', { href: 'https://www.youtube.com/watch?v=' + id, target: '_blank', rel: 'noopener' }, 'Xem trên YouTube');
     if (!n) { watchMsg(['Chưa có bài nào đang phát.']); if (vpReady) vp.stopVideo(); return; }
+    if (isSc(n)) {
+      // Bài SoundCloud không có video: chỉ hiện ảnh bìa và link
+      watchMsg([el('div', {}, '☁ Bài SoundCloud — đang phát trên loa của phòng.', el('br'),
+        el('a', { href: n.scUrl, target: '_blank', rel: 'noopener' }, 'Mở trên SoundCloud'))]);
+      if (vpReady) vp.stopVideo();
+      return;
+    }
     const p = lastP && lastP.videoId === n.videoId ? lastP : null;
     if (n.noEmbed || blockedVid === n.videoId || (p && p.tab)) {
       watchMsg([el('div', {}, 'Chủ video không cho phát trên website khác.', el('br'), ytLink(n.videoId))]);
@@ -409,7 +418,7 @@
   $('#searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = $('#searchInput').value.trim();
-    if (searchInfo && !searchInfo.available) return openYouTubeSearch(q);
+    if (searchInfo && !searchInfo.available && !/soundcloud\.com|snd\.sc/i.test(q)) return openYouTubeSearch(q);
     if (!q) return;
     $('#searchInput').blur();
     const box = $('#results');
@@ -433,7 +442,7 @@
     box.innerHTML = '';
     if (!lastResults.length) return box.append(el('div', { class: 'empty' }, 'Không có kết quả.'));
     for (const v of lastResults) {
-      const btn = el('button', { class: 'ghost', 'data-vid': v.videoId, onclick: () => addSong({ videoId: v.videoId }, btn) });
+      const btn = el('button', { class: 'ghost', 'data-vid': v.videoId, onclick: () => addSong(isSc(v) ? { url: v.scUrl } : { videoId: v.videoId }, btn) });
       box.append(songRow(v, { actions: [btn] }));
     }
     refreshResultButtons();

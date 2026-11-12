@@ -22,12 +22,15 @@
 <h2>YouTube API Services</h2>
 <p>Chillwith3A uses YouTube API Services to search for videos and to look up video details (title, channel name, thumbnail, duration). Videos are played only through the official YouTube embedded player. By using Chillwith3A you agree to be bound by the <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">YouTube Terms of Service</a>. Information Google collects through YouTube is governed by the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>.</p>
 
+<h2>SoundCloud</h2>
+<p>Guests can also add a song by pasting a public SoundCloud link. Chillwith3A looks up the track's title, artist name and artwork through SoundCloud's public oEmbed endpoint and plays it only through the official SoundCloud embedded player on the host's page. SoundCloud content is subject to the <a href="https://soundcloud.com/terms-of-use" target="_blank" rel="noopener">SoundCloud Terms of Use</a>, and the embedded player may set cookies according to the <a href="https://soundcloud.com/pages/privacy" target="_blank" rel="noopener">SoundCloud Privacy Policy</a>.</p>
+
 <h2>Information we collect and store</h2>
 <ul>
   <li><b>Display name</b> you type when joining, shown next to the songs you add and your chat messages.</li>
   <li><b>Chat messages and reactions</b> you send, visible to everyone in the room.</li>
   <li><b>Likes / dislikes</b> (👍/👎) on the song that is playing, and a running score per display name of the person who chose each song, shown as a small leaderboard and name effects. The room admin can reset it at any time.</li>
-  <li><b>Songs you add to the queue</b>: the YouTube video ID, title, channel name, thumbnail URL and duration returned by the YouTube API, together with your display name.</li>
+  <li><b>Songs you add to the queue</b>: the YouTube video ID, title, channel name, thumbnail URL and duration returned by the YouTube API (or, for SoundCloud links, the track link, track ID, title, artist name and artwork URL), together with your display name.</li>
   <li><b>A random device identifier</b> generated in your browser so the website can recognise your own songs and messages. The server only stores a one-way hash of it.</li>
   <li><b>Search terms</b> you enter are sent to the YouTube API to get results. Results are cached in server memory for at most 6 hours so repeated searches do not use extra quota; search terms are not linked to your name and are not stored permanently.</li>
 </ul>
@@ -61,7 +64,7 @@
 <p class="meta">Có hiệu lực từ 10/11/2026</p>
 <p>Chillwith3A là website miễn phí, phi thương mại, giúp một nhóm bạn cùng chọn nhạc YouTube cho phòng chung và chat với nhau.</p>
 <ul>
-  <li><b>YouTube API Services:</b> website dùng YouTube API Services để tìm video và lấy thông tin video. Nhạc chỉ phát qua trình phát nhúng chính thức của YouTube. Khi dùng website, bạn đồng ý với <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">Điều khoản dịch vụ của YouTube</a>; dữ liệu Google thu thập qua YouTube tuân theo <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Chính sách quyền riêng tư của Google</a>.</li>
+  <li><b>YouTube API Services:</b> website dùng YouTube API Services để tìm video và lấy thông tin video. Nhạc chỉ phát qua trình phát nhúng chính thức của YouTube (hoặc của SoundCloud với bài dán link SoundCloud — tuân theo <a href="https://soundcloud.com/terms-of-use" target="_blank" rel="noopener">Điều khoản</a> và <a href="https://soundcloud.com/pages/privacy" target="_blank" rel="noopener">Chính sách quyền riêng tư của SoundCloud</a>). Khi dùng website, bạn đồng ý với <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">Điều khoản dịch vụ của YouTube</a>; dữ liệu Google thu thập qua YouTube tuân theo <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Chính sách quyền riêng tư của Google</a>.</li>
   <li><b>Dữ liệu được lưu:</b> tên hiển thị bạn nhập, tin nhắn và cảm xúc bạn gửi, lượt 👍/👎 cho bài đang phát và điểm tích lũy theo tên người chọn bài (Admin có thể đặt lại), các bài bạn thêm (mã video, tên bài, kênh, ảnh bìa, thời lượng), và mã ngẫu nhiên của trình duyệt (máy chủ chỉ lưu bản băm). Từ khóa tìm kiếm được gửi tới YouTube và lưu đệm tối đa 6 giờ.</li>
   <li><b>Không thu thập</b> email, số điện thoại, không đăng nhập Google/YouTube, không truy cập tài khoản YouTube của bạn.</li>
   <li><b>Thời gian lưu:</b> tin nhắn (100 tin gần nhất) và lịch sử bài đã phát (20 bài gần nhất) tự xóa sau tối đa 30 ngày. Admin có thể xóa hàng chờ và chat bất cứ lúc nào.</li>

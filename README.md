@@ -57,6 +57,13 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 - Lần đầu Chrome có thể chặn cửa sổ bật lên: bấm **Mở cửa sổ YouTube**, rồi chọn **Luôn cho phép cửa sổ bật lên** của trang ở cuối thanh địa chỉ.
 - Khi đang phát qua cửa sổ YouTube, nút Tạm dừng chỉ dừng đồng hồ đếm; hãy tạm dừng cả trong cửa sổ YouTube.
 
+## Bài từ SoundCloud
+
+- Người tham gia dán link bài SoundCloud (soundcloud.com/…, m.soundcloud.com/… hoặc link rút gọn on.soundcloud.com/… từ ứng dụng) vào tab **Dán link** hoặc ô tìm kiếm. Không tốn lượt tìm YouTube.
+- Máy phát phát bằng trình phát nhúng chính thức của SoundCloud, **không cần đăng nhập SoundCloud**. Bài công khai phát đầy đủ; bài SoundCloud Go+ chỉ phát đoạn ngắn rồi tự chuyển bài.
+- Chưa hỗ trợ playlist (link /sets/). Bài riêng tư hoặc bị tác giả tắt nhúng sẽ báo lỗi khi thêm.
+- Bài SoundCloud có nhãn ☁ SoundCloud trong hàng chờ; thời lượng hiện sau khi máy phát bắt đầu phát bài.
+
 ## Lời nhắn kèm bài & xem video
 - Khi thêm bài, có thể ghi **lời nhắn** (ô 🎁 dưới ô tìm kiếm). Trong lúc bài đó phát, lời nhắn chạy trên đầu trang của mọi người và thay chỗ thông báo của Admin; bài có lời nhắn hiện 🎁 trong hàng chờ. Người thêm bài sửa / xóa lời nhắn bằng nút ✏️ trong hàng chờ; Admin sửa / xóa được mọi lời nhắn.
 - Người tham gia bấm **📺 Xem video** trong khung Đang phát để xem video đồng bộ với loa (tắt tiếng sẵn, có nút bật tiếng). Bài bị chặn phát nhúng chỉ hiện link xem trên YouTube.

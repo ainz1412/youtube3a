@@ -115,6 +115,7 @@ header .me a:hover { text-decoration: underline; }
 .song .tline .title { flex: 1; min-width: 0; }
 .song .gift { flex: none; font-size: 15px; line-height: 1; cursor: default; filter: drop-shadow(0 0 6px rgba(255, 197, 61, .55)); }
 .badge.yt { background: rgba(255, 82, 82, .16); color: #ff8a8a; cursor: help; }
+.badge.sc { background: rgba(255, 119, 0, .18); color: #ff9a3c; }
 
 /* ---------- Đang phát (điểm nhấn: màu theo ảnh bìa) ---------- */
 #nowPanel {
