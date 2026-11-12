@@ -65,15 +65,19 @@ async function soundCloudInfo(input) {
   if (!r.ok) { const e = new Error('Không tìm thấy bài SoundCloud này (có thể là bài riêng tư hoặc link sai)'); e.status = 404; throw e; }
   const j = await r.json();
   let html = j.html || '';
-  try { html = decodeURIComponent(html); } catch (e) {}
+  for (let i = 0; i < 2; i++) { try { html = decodeURIComponent(html); } catch (e) { break; } }
   if (/\/playlists\//i.test(html)) { const e = new Error('Chỉ thêm được từng bài, chưa hỗ trợ playlist SoundCloud'); e.status = 400; throw e; }
   const m = /tracks(?:\/|:)(\d+)/i.exec(html);
   // Không đọc được mã bài -> dùng đường dẫn bài làm mã (vẫn chống trùng được)
   const id = m ? m[1] : u.pathname.replace(/^\/+|\/+$/g, '').toLowerCase().slice(0, 36);
   if (!id || !id.includes('/') && !m) { const e = new Error('Link này không phải là một bài hát SoundCloud'); e.status = 400; throw e; }
+  const channel = decodeEntities(j.author_name || 'SoundCloud');
+  let title = decodeEntities(j.title || 'SoundCloud');
+  // oEmbed trả tên dạng "Tên bài by Nghệ sĩ" -> bỏ phần " by Nghệ sĩ" vì đã hiện ở dòng nghệ sĩ
+  if (title.toLowerCase().endsWith(' by ' + channel.toLowerCase())) title = title.slice(0, -(channel.length + 4));
   return {
     source: 'sc', videoId: 'sc:' + id, scUrl: url,
-    title: decodeEntities(j.title || 'SoundCloud'), channel: decodeEntities(j.author_name || 'SoundCloud'),
+    title, channel,
     thumb: j.thumbnail_url || '', duration: 0, embeddable: true,
   };
 }
@@ -111,7 +115,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-12.2';
+const APP_VERSION = '2026-11-12.3';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
