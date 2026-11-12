@@ -84,10 +84,10 @@ async function soundCloudInfo(input) {
   const r = await fetch('https://soundcloud.com/oembed?format=json&url=' + encodeURIComponent(url), { headers: { 'user-agent': SC_UA } });
   if (r.ok) {
     const j = await r.json();
-    let html = j.html || '';
-    for (let i = 0; i < 2; i++) { try { html = decodeURIComponent(html); } catch (e) { break; } }
-    if (/\/playlists\//i.test(html)) throw scErr(SC_PLAYLIST_MSG, 400);
-    if (!/\/tracks\/|tracks:/i.test(html)) throw scErr('Link này không phải là một bài hát SoundCloud', 400);
+    // html chứa link trình phát đã mã hóa (…api.soundcloud.com%2Ftracks%2F…), có cả "100%" nên không giải mã cả chuỗi
+    const html = String(j.html || '');
+    if (/playlists(?:%2F|\/)/i.test(html)) throw scErr(SC_PLAYLIST_MSG, 400);
+    if (!/tracks(?:%2F|\/|%3A|:)/i.test(html)) throw scErr('Link này không phải là một bài hát SoundCloud', 400);
     const channel = decodeEntities(j.author_name || 'SoundCloud');
     let title = decodeEntities(j.title || 'SoundCloud');
     // oEmbed trả tên dạng "Tên bài by Nghệ sĩ" -> bỏ phần " by Nghệ sĩ" vì đã hiện ở dòng nghệ sĩ
@@ -158,7 +158,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-12.4';
+const APP_VERSION = '2026-11-12.5';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
