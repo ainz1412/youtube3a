@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-11.5';
+const APP_VERSION = '2026-11-12.1';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -59,6 +59,54 @@ async function ownerHash(s) {
   return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ---------- 👍/👎 và danh hiệu ----------
+let FAME = { tiers: {}, hot: [], cold: [] };
+function setFame(f) { FAME = f || { tiers: {}, hot: [], cold: [] }; }
+const FAME_LABEL = { fire: '🔥', aurora: '👑', electric: '⚡', glow: '✨', storm: '⛈️', fog: '🌫️', wilt: '🥀' };
+function fameTitle(tier) {
+  if (!tier) return null;
+  return tier.r > 0 ? `${FAME_LABEL[tier.t]} Top ${tier.r} được thích nhất` : `${FAME_LABEL[tier.t]} Top ${-tier.r} bị chê nhiều nhất`;
+}
+// Huy hiệu tên người chọn bài, có hiệu ứng theo hạng
+function fameBadge(name, owner, { mine = false } = {}) {
+  const tier = owner ? FAME.tiers[owner] : null;
+  return el('span', { class: 'badge' + (mine ? ' me' : '') + (tier ? ' fame fame-' + tier.t : ''), title: fameTitle(tier) }, name);
+}
+function voteBar(n, nv, voterId, onVote) {
+  nv = nv || { up: 0, down: 0, voters: {} };
+  const mineSong = voterId && n.owner === voterId;
+  const my = (voterId && nv.voters[voterId]) || 0;
+  const btn = (v, icon, count) => el('button', {
+    type: 'button', class: 'vote' + (my === v ? ' on' : '') + (v < 0 ? ' down' : ''),
+    title: mineSong ? 'Không tự chấm bài của mình được' : v > 0 ? 'Thích bài này' : 'Không thích bài này',
+    disabled: mineSong ? 'disabled' : null,
+    onclick: () => onVote(v),
+  }, icon, el('span', {}, String(count)));
+  return el('span', { class: 'votes' }, btn(1, '👍', nv.up), btn(-1, '👎', nv.down));
+}
+// Bảng 🏆 (menu nhỏ)
+let famePop = null;
+function closeFame() { if (famePop) { famePop.remove(); famePop = null; } }
+function openFame(anchor, { onReset } = {}) {
+  if (famePop) return closeFame();
+  const row = (x, i, cold) => el('div', { class: 'fame-row' },
+    el('span', { class: 'fame-rank' }, String(i + 1)),
+    fameBadge(x.name, x.owner),
+    el('span', { class: 'fame-score' }, `👍 ${x.likes} · 👎 ${x.dislikes}`));
+  famePop = el('div', { class: 'fame-pop', role: 'dialog' },
+    el('div', { class: 'fame-h' }, '🔥 Được thích nhất'),
+    FAME.hot.length ? FAME.hot.map((x, i) => row(x, i)) : el('div', { class: 'fame-empty' }, 'Chưa có ai. Hãy 👍 bài bạn thích!'),
+    el('div', { class: 'fame-h' }, '⛈️ Bị chê nhiều nhất'),
+    FAME.cold.length ? FAME.cold.map((x, i) => row(x, i, true)) : el('div', { class: 'fame-empty' }, 'Chưa có ai, cả phòng hiền quá 😇'),
+    el('div', { class: 'fame-foot' }, 'Điểm = 👍 − 👎 mà bài bạn chọn nhận được.'),
+    onReset ? el('button', { class: 'ghost', type: 'button', style: 'margin-top:10px;width:100%', onclick: () => { closeFame(); onReset(); } }, 'Đặt lại bảng xếp hạng') : null);
+  document.body.append(famePop);
+  const r = anchor.getBoundingClientRect();
+  famePop.style.top = r.bottom + 8 + 'px';
+  famePop.style.left = Math.max(8, Math.min(window.innerWidth - famePop.offsetWidth - 8, r.right - famePop.offsetWidth)) + 'px';
+}
+document.addEventListener('click', (e) => { if (famePop && !famePop.contains(e.target) && !e.target.closest('.fame-btn')) closeFame(); });
+
 function songRow(s, { num, mine, actions = [], showNote = false } = {}) {
   return el('div', { class: 'song' },
     num != null ? el('div', { class: 'num' }, String(num)) : null,
@@ -71,7 +119,7 @@ function songRow(s, { num, mine, actions = [], showNote = false } = {}) {
       el('div', { class: 'sub' },
         s.noEmbed || s.embeddable === false ? el('span', { class: 'badge yt', title: 'Chủ video không cho phát trên website khác. Máy phát sẽ mở bài này trong cửa sổ youtube.com.' }, '↗ YouTube') : null,
         s.noEmbed || s.embeddable === false ? ' ' : null,
-        s.addedBy ? el('span', { class: 'badge' + (mine ? ' me' : '') }, s.addedBy) : null,
+        s.addedBy ? fameBadge(s.addedBy, s.owner, { mine }) : null,
         s.addedBy ? ' ' : null,
         s.channel)),
     el('div', { class: 'dur' }, fmtDur(s.duration)),
@@ -207,6 +255,23 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
   }
 
+  function whoLabel(m) {
+    const w = el('div', { class: 'who', 'data-owner': m.owner || '', 'data-name': m.name });
+    const tier = m.owner && FAME.tiers[m.owner];
+    w.append(tier ? fameBadge(m.name, m.owner) : m.name);
+    return w;
+  }
+  function refreshFame() {
+    msgs.querySelectorAll('.who[data-owner]').forEach((w) => {
+      const tier = w.dataset.owner && FAME.tiers[w.dataset.owner];
+      const key = tier ? tier.t + tier.r : '';
+      if (w.dataset.tier === key) return;
+      w.dataset.tier = key;
+      w.innerHTML = '';
+      w.append(tier ? fameBadge(w.dataset.name, w.dataset.owner) : w.dataset.name);
+    });
+  }
+
   function render(m) {
     if (m.system) { prev = null; return el('div', { class: 'msg sys' }, m.text); }
     const mine = isMine(m);
@@ -215,7 +280,7 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     prev = m;
     const reactBox = el('div', { class: 'reactions hidden' });
     const node = el('div', { class: 'msg' + (mine ? ' mine' : '') + (m.host ? ' host' : '') + (grouped && !m.reply ? '' : ' gap'), 'data-id': m.id },
-      grouped && !m.reply ? null : (m.host ? el('div', { class: 'who' }, '👑 Admin') : el('div', { class: 'who' }, m.name)),
+      grouped && !m.reply ? null : (m.host ? el('div', { class: 'who' }, '👑 Admin') : whoLabel(m)),
       m.reply ? el('div', { class: 'reply-quote' + (m.reply.host ? ' host-q' : ''), title: 'Xem tin gốc', onclick: () => jumpTo(m.reply.id) },
         '↩ ', el('b', {}, m.reply.name), ': ', m.reply.text) : null,
       el('div', { class: 'brow' },
@@ -305,6 +370,7 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
       typers.set(name, Date.now() + 4000);
       drawTyping();
     },
+    refreshFame,
     react({ id, reactions }) {
       const m = byId.get(id), n = nodes.get(id);
       if (!m || !n) return;

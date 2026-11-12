@@ -73,7 +73,7 @@ const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. B
 const VIDEO_UNITS_PER_DAY = 10000;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-11.5';
+const APP_VERSION = '2026-11-12.1';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -93,9 +93,11 @@ export class Room extends DurableObject {
     this.kid = 'none';
     this.speaker = null;      // { id, label, since }: thiết bị Admin đang phát nhạc ra loa
     this.notice = null;       // { text, at }: thông báo chạy ngang trên đầu trang
+    this.votes = { songId: null, map: {} };  // phiếu 👍/👎 cho bài đang phát: { [người bầu]: 1 | -1 }
+    this.ranks = {};          // điểm của người chọn bài: { [owner]: { name, likes, dislikes } }
     this.player = null;       // trạng thái trình phát do máy phát báo về: { paused, volume, t, d, at }
     ctx.blockConcurrencyWhile(async () => {
-      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride', 'speaker', 'notice']);
+      const m = await ctx.storage.get(['state', 'chat', 'usage', 'usageHist', 'apiKeyOverride', 'cfgOverride', 'speaker', 'notice', 'votes', 'ranks']);
       const s = m.get('state'), c = m.get('chat');
       if (s) Object.assign(this.state, s);
       if (Array.isArray(c)) this.chat = c;
@@ -105,6 +107,8 @@ export class Room extends DurableObject {
       this.cfgOverride = m.get('cfgOverride') || {};
       this.speaker = m.get('speaker') || null;
       this.notice = m.get('notice') || null;
+      this.votes = m.get('votes') || { songId: null, map: {} };
+      this.ranks = m.get('ranks') || {};
       this.prune();
       await this.refreshKeyId();
     });
@@ -158,6 +162,8 @@ export class Room extends DurableObject {
       limits: { maxSongsPerUser: c.maxSongs, maxDurationMin: c.maxDur },
       search: this.searchInfo(),
       notice: this.notice,
+      nowVotes: this.nowVotes(),
+      fame: this.fame(),
     };
   }
 
@@ -271,10 +277,32 @@ export class Room extends DurableObject {
   }
   systemMsg(text) { this.pushChat({ id: crypto.randomUUID(), system: true, text, t: Date.now() }); }
 
+  // ----- 👍/👎 và danh hiệu -----
+  nowVotes() {
+    const np = this.state.nowPlaying;
+    if (!np || this.votes.songId !== np.id) return { up: 0, down: 0, voters: {} };
+    const vals = Object.values(this.votes.map);
+    return { up: vals.filter((v) => v > 0).length, down: vals.filter((v) => v < 0).length, voters: this.votes.map };
+  }
+  // Top 5 được thích (điểm = 👍 − 👎 > 0) và top 3 bị chê (điểm < 0), mỗi hạng một danh hiệu
+  fame() {
+    const all = Object.entries(this.ranks).map(([owner, r]) => ({ owner, name: r.name, likes: r.likes || 0, dislikes: r.dislikes || 0, net: (r.likes || 0) - (r.dislikes || 0) }));
+    const hot = all.filter((x) => x.net > 0).sort((a, b) => b.net - a.net || b.likes - a.likes).slice(0, 5);
+    const cold = all.filter((x) => x.net < 0).sort((a, b) => a.net - b.net || b.dislikes - a.dislikes).slice(0, 3);
+    const HOT = ['fire', 'aurora', 'electric', 'glow', 'glow'], COLD = ['storm', 'fog', 'wilt'];
+    const tiers = {};
+    hot.forEach((x, i) => { tiers[x.owner] = { t: HOT[i], r: i + 1 }; });
+    cold.forEach((x, i) => { tiers[x.owner] = { t: COLD[i], r: -(i + 1) }; });
+    const pick = (x) => ({ owner: x.owner, name: x.name, likes: x.likes, dislikes: x.dislikes });
+    return { tiers, hot: hot.map(pick), cold: cold.map(pick) };
+  }
+
   playNext() {
     const s = this.state;
     if (s.nowPlaying) { s.history.unshift(s.nowPlaying); s.history = s.history.slice(0, 20); }
     s.nowPlaying = s.queue.shift() || null;
+    this.votes = { songId: s.nowPlaying ? s.nowPlaying.id : null, map: {} };
+    this.ctx.storage.put('votes', this.votes);
     s.paused = false;
     this.changed();
     if (s.nowPlaying) this.systemMsg(`▶️ Đang phát: ${s.nowPlaying.title} (${s.nowPlaying.addedBy} chọn)${s.nowPlaying.note ? ` — 🎁 "${s.nowPlaying.note}"` : ''}`);
@@ -385,9 +413,34 @@ export class Room extends DurableObject {
           ...(cleanNote(body.note) ? { note: cleanNote(body.note) } : {}),
         };
         this.state.queue.push(song);
+        if (this.ranks[owner] && this.ranks[owner].name !== name) { this.ranks[owner].name = name; this.ctx.storage.put('ranks', this.ranks); }
         this.systemMsg(`🎵 ${name} đã thêm: ${song.title}${song.noEmbed ? ' (phát qua cửa sổ YouTube)' : ''}`);
         if (!this.state.nowPlaying) this.playNext(); else this.changed();
         return json({ ok: true, song });
+      }
+
+      if (p === '/api/vote') {
+        if (!this.pinOk(body.pin, body.pw)) return json({ error: 'Sai mã phòng' }, 403);
+        const np = this.state.nowPlaying;
+        if (!np || np.id !== body.id) return json({ error: 'Bài này không còn đang phát' }, 409);
+        const v = Number(body.v) > 0 ? 1 : Number(body.v) < 0 ? -1 : 0;
+        if (!v) return json({ error: 'Phiếu không hợp lệ' }, 400);
+        const voter = this.isHost(body.pw) ? 'host' : await sha(body.cid || ip);
+        if (voter === np.owner) return json({ error: 'Không tự chấm bài của mình được 😄' }, 403);
+        if (this.limited('vote:' + ip + ':' + voter, 20, 10_000)) return json({ error: 'Bạn bấm nhanh quá, chờ chút nhé' }, 429);
+        if (this.votes.songId !== np.id) this.votes = { songId: np.id, map: {} };
+        const prev = this.votes.map[voter] || 0;
+        const next = prev === v ? 0 : v;               // bấm lại cùng nút = gỡ phiếu
+        if (next) this.votes.map[voter] = next; else delete this.votes.map[voter];
+        const r = this.ranks[np.owner] || (this.ranks[np.owner] = { name: np.addedBy, likes: 0, dislikes: 0 });
+        r.name = np.addedBy;
+        if (prev > 0) r.likes--; if (prev < 0) r.dislikes--;
+        if (next > 0) r.likes++; if (next < 0) r.dislikes++;
+        r.likes = Math.max(0, r.likes); r.dislikes = Math.max(0, r.dislikes);
+        this.ctx.storage.put('votes', this.votes);
+        this.ctx.storage.put('ranks', this.ranks);
+        this.broadcast('state', this.publicState());
+        return json({ ok: true, vote: next });
       }
 
       if (p === '/api/skip') {
@@ -583,6 +636,12 @@ export class Room extends DurableObject {
             this.broadcast('state', this.publicState());
             return json({ ok: true, info: this.quotaInfo() });
           }
+          case 'resetranks':
+            this.ranks = {};
+            await this.ctx.storage.put('ranks', this.ranks);
+            this.broadcast('state', this.publicState());
+            this.systemMsg('🏆 Admin đã đặt lại bảng xếp hạng.');
+            break;
           case 'clearchat':
             this.chat = [];
             this.ctx.storage.put('chat', this.chat);

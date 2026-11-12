@@ -61,6 +61,11 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 - Khi thêm bài, có thể ghi **lời nhắn** (ô 🎁 dưới ô tìm kiếm). Trong lúc bài đó phát, lời nhắn chạy trên đầu trang của mọi người và thay chỗ thông báo của Admin; bài có lời nhắn hiện 🎁 trong hàng chờ. Người thêm bài sửa / xóa lời nhắn bằng nút ✏️ trong hàng chờ; Admin sửa / xóa được mọi lời nhắn.
 - Người tham gia bấm **📺 Xem video** trong khung Đang phát để xem video đồng bộ với loa (tắt tiếng sẵn, có nút bật tiếng). Bài bị chặn phát nhúng chỉ hiện link xem trên YouTube.
 
+## 👍/👎 và danh hiệu
+- Bấm 👍 / 👎 cạnh "Chọn bởi" để chấm bài đang phát (mỗi người 1 phiếu / bài, bấm lại để gỡ, không tự chấm bài mình). Điểm = 👍 − 👎 cộng cho người chọn bài.
+- Top 5 được thích có hiệu ứng trên tên: 🔥 lửa, 👑 cực quang, ⚡ điện, ✨ sáng; top 3 bị chê: ⛈️ mây giông, 🌫️ sương mù, 🥀 héo.
+- Nút 🏆 trên đầu trang xem bảng xếp hạng; Admin có nút đặt lại.
+
 ## Âm báo & thông báo tin nhắn
 - Nút 🔔 / 🔕 ở khung chat: bật thì có tiếng "ting" khi người khác nhắn; khi đang ở tab khác, tiêu đề tab hiện số tin chưa đọc và (nếu trình duyệt cho phép) hiện thông báo của hệ điều hành.
 - Thông báo riêng khi có người trả lời tin của bạn, và khi bài bạn chọn bắt đầu phát.

@@ -66,7 +66,7 @@
   <div class="logo">♪</div>
   <h1>Chillwith3A</h1>
   <div class="marquee hidden" id="marquee" title="Thông báo từ Admin"><span class="mq-icon">📢</span><div class="mq-window"><span class="marquee-track" id="marqueeTrack"></span></div></div>
-  <div class="me"><span class="dot" id="conn" title="Kết nối"></span><b id="meName" style="color:var(--text)">?</b>&nbsp;&nbsp;<a href="#" id="rename">Đổi tên</a></div>
+  <div class="me"><button class="fame-btn" id="fameBtn" type="button" title="Bảng xếp hạng người chọn nhạc">🏆</button> <span class="dot" id="conn" title="Kết nối"></span><b id="meName" style="color:var(--text)">?</b>&nbsp;&nbsp;<a href="#" id="rename">Đổi tên</a></div>
 </header>
 
 <main>
@@ -218,6 +218,8 @@
     }
     lastNowId = nowId || '';
     current = s;
+    setFame(s.fame);
+    chat.refreshFame();
     const now = $('#now');
     now.innerHTML = '';
     $('#nowPanel').classList.toggle('paused', !!s.paused || !s.nowPlaying);
@@ -228,7 +230,8 @@
         el('div', { style: 'min-width:0' },
           el('a', { class: 'title', href: 'https://www.youtube.com/watch?v=' + n.videoId, target: '_blank', rel: 'noopener', title: 'Xem trên YouTube', style: 'color:inherit;text-decoration:none' }, n.title),
           el('div', { class: 'np-sub' }, n.channel, ' • ', fmtDur(n.duration), s.paused ? ' • Tạm dừng' : ''),
-          el('div', { class: 'np-by' }, 'Chọn bởi ', el('span', { class: 'badge' + (n.owner === myOwner ? ' me' : '') }, n.addedBy),
+          el('div', { class: 'np-by' }, 'Chọn bởi ', fameBadge(n.addedBy, n.owner, { mine: n.owner === myOwner }),
+            voteBar(n, s.nowVotes, myOwner, (v) => vote(n, v)),
             n.owner === myOwner ? el('button', { class: 'ghost skip-btn', type: 'button', title: 'Bỏ qua bài bạn chọn', onclick: (e) => skipMine(n, e.currentTarget) }, '⏭ Bỏ qua') : null))));
       applyNowTint($('#nowPanel'), n.thumb);
     } else { now.append(el('div', { class: 'empty' }, 'Chưa có bài nào. Hãy là người đầu tiên!')); applyNowTint($('#nowPanel'), null); }
@@ -256,6 +259,12 @@
     $('#online').title = s.online.join(', ');
     refreshResultButtons();
   }
+
+  async function vote(n, v) {
+    try { await api('/api/vote', { id: n.id, v, cid, pin }); }
+    catch (e) { toast(e.message, true); }
+  }
+  $('#fameBtn').addEventListener('click', (e) => openFame(e.currentTarget));
 
   // Bỏ qua bài mình chọn: bấm 2 lần để tránh bấm nhầm
   async function skipMine(n, btn) {

@@ -220,3 +220,59 @@ header .me a:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- 👍/👎 ---------- */
+.votes { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.vote { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; font-size: 13px; font-weight: 600; background: rgba(255,255,255,.1); color: #fff; }
+.vote:hover { background: rgba(255,255,255,.18); transform: scale(1.06); }
+.vote.on { background: var(--green); color: #000; }
+.vote.down.on { background: #8e8ea8; color: #000; }
+.vote:disabled { opacity: .5; }
+
+/* ---------- danh hiệu trên tên (theo hạng 👍/👎) ---------- */
+.badge.fame { font-weight: 800; position: relative; }
+.badge.fame::before { margin-right: 3px; }
+/* Top 1: lửa cháy */
+.badge.fame-fire { color: #2a0800; background: linear-gradient(90deg, #ff3d00, #ff9100, #ffd600, #ff6d00, #ff3d00); background-size: 300% 100%;
+  animation: fameflow 2.4s linear infinite, fireglow 1.3s ease-in-out infinite; text-shadow: 0 0 2px rgba(255,255,255,.5); }
+.badge.fame-fire::before { content: '🔥'; display: inline-block; animation: flame .9s ease-in-out infinite; }
+@keyframes fireglow { 0%, 100% { box-shadow: 0 0 6px 1px rgba(255,98,0,.75), 0 -2px 14px rgba(255,61,0,.45); } 50% { box-shadow: 0 0 11px 3px rgba(255,160,0,.9), 0 -4px 22px rgba(255,61,0,.7); } }
+@keyframes flame { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1px) scale(1.15); } }
+/* Top 2: cực quang */
+.badge.fame-aurora { color: #fff; background: linear-gradient(90deg, #7c4dff, #ff4ecd, #b388ff, #ff80ab, #7c4dff); background-size: 300% 100%;
+  animation: fameflow 3.5s linear infinite; box-shadow: 0 0 10px rgba(255,78,205,.65); text-shadow: 0 0 6px rgba(255,255,255,.6); }
+.badge.fame-aurora::before { content: '👑'; }
+/* Top 3: điện xanh */
+.badge.fame-electric { color: #001a26; background: linear-gradient(90deg, #00e5ff, #40c4ff, #2979ff, #00e5ff); background-size: 300% 100%;
+  animation: fameflow 2.8s linear infinite, zap 2.2s steps(1) infinite; box-shadow: 0 0 9px rgba(0,229,255,.7); }
+.badge.fame-electric::before { content: '⚡'; }
+@keyframes zap { 0%, 88%, 100% { filter: none; } 90% { filter: brightness(1.8); } 94% { filter: brightness(1.2); } }
+/* Top 4–5: ánh xanh */
+.badge.fame-glow { color: #dfffe9; background: rgba(30,215,96,.22); box-shadow: 0 0 8px rgba(30,215,96,.55); }
+.badge.fame-glow::before { content: '✨'; }
+/* Bị chê top 1: mây giông */
+.badge.fame-storm { color: #8f8fa8; background: linear-gradient(180deg, #34344a, #15151c); box-shadow: inset 0 0 6px #000, 0 0 10px rgba(70,50,130,.55);
+  filter: saturate(.6); animation: gloom 4s ease-in-out infinite; }
+.badge.fame-storm::before { content: '⛈️'; }
+@keyframes gloom { 0%, 100% { opacity: 1; } 47% { opacity: .75; } 50% { opacity: 1; box-shadow: inset 0 0 6px #000, 0 0 14px rgba(160,140,255,.7); } 53% { opacity: .8; } }
+/* Bị chê top 2: sương mù */
+.badge.fame-fog { color: #9c9c9c; background: #3a3a3a; opacity: .7; filter: grayscale(1); }
+.badge.fame-fog::before { content: '🌫️'; }
+/* Bị chê top 3: hoa héo */
+.badge.fame-wilt { color: #a89580; background: #2e2924; filter: sepia(.4) saturate(.7); }
+.badge.fame-wilt::before { content: '🥀'; }
+@keyframes fameflow { to { background-position: 300% 0; } }
+.msg .who .badge.fame { font-size: 11.5px; }
+
+/* ---------- bảng 🏆 ---------- */
+.fame-btn { padding: 2px 8px; font-size: 16px; background: transparent; }
+.fame-btn:hover { background: rgba(255,255,255,.1); transform: none; }
+.fame-pop { position: fixed; z-index: 60; width: 300px; background: #282828; border-radius: 12px; padding: 12px 14px; box-shadow: 0 12px 36px rgba(0,0,0,.6); }
+.fame-h { font-size: 13px; font-weight: 700; color: var(--muted); margin: 6px 0 6px; }
+.fame-h:not(:first-child) { margin-top: 14px; }
+.fame-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.fame-rank { width: 16px; color: var(--muted); font-size: 13px; text-align: right; }
+.fame-row .badge { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fame-score { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.fame-empty { font-size: 12.5px; color: var(--subtle); padding: 4px 0; }
+.fame-foot { font-size: 11.5px; color: var(--subtle); margin-top: 12px; }
