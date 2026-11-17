@@ -1,6 +1,6 @@
 // Hàm dùng chung cho trang khách và trang Admin
 // Phiên bản giao diện: phải giống APP_VERSION trong src/worker.js
-const APP_VERSION = '2026-11-12.5';
+const APP_VERSION = '2026-11-17.1';
 const $ = (s, el = document) => el.querySelector(s);
 
 function el(tag, attrs = {}, ...children) {
@@ -18,6 +18,12 @@ function el(tag, attrs = {}, ...children) {
 const isSc = (s) => !!s && s.source === 'sc';
 const songUrl = (s) => isSc(s) ? s.scUrl : 'https://www.youtube.com/watch?v=' + s.videoId;
 const songSite = (s) => isSc(s) ? 'SoundCloud' : 'YouTube';
+
+// Vị trí hiện tại của bài, tính từ lần máy phát báo gần nhất (p.recvAt = lúc trình duyệt nhận)
+function livePos(p) {
+  if (!p) return 0;
+  return (+p.t || 0) + (p.paused ? 0 : ((+p.age || 0) + Date.now() - p.recvAt) / 1000);
+}
 
 function fmtDur(s) {
   s = Math.round(s || 0);
@@ -181,7 +187,24 @@ function applyNowTint(panel, url) {
 // opts.isMine(m)   -> tin nhắn của chính mình (hiện bên phải)
 // opts.myOwner()   -> mã người dùng hiện tại (để tô cảm xúc mình đã thả)
 // opts.onTyping()  -> gọi khi mình đang gõ (đã giới hạn tần suất)
-const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+// Biểu cảm thả vào tin nhắn (server kiểm tra theo đúng danh sách này)
+const REACTION_GROUPS = [
+  ['Mặt cười', '😀 😁 😂 🤣 😅 😆 😊 😇 🙂 😉 😋 😜 🤪 😎 🤩 🥳 😍 🥰 😘 🤗 🤭 🤔 😏 🙄 😴 🥱 😌 😮 😲 🤯 😳 😱 🥺 😢 😭 😤 😡 🤬 😬 🤡 💀 👻'],
+  ['Cử chỉ', '👍 👎 👏 🙌 🙏 💪 👌 ✌️ 🤞 🤙 🤘 👋 ✊ 🤝 💅 👀 🕺 💃'],
+  ['Tim & âm nhạc', '❤️ 🧡 💛 💚 💙 💜 🖤 💔 💯 🔥 ✨ ⭐ 💥 🎉 🎊 🎶 🎵 🎧 🎤 🎸 🥁 🎹'],
+  ['Khác', '🍻 ☕ 🌹 🍀 🌈 🦄 🐶 🐱 🐧 🐸 ✅ ❌ ❓ ‼️ 💤 🆗'],
+].map(([name, list]) => [name, list.split(' ')]);
+const REACTIONS = REACTION_GROUPS.flatMap((g) => g[1]);
+const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+const RECENT_REACT_KEY = 'jb_recent_reacts';
+function recentReacts() {
+  let a = [];
+  try { a = JSON.parse(localStorage.getItem(RECENT_REACT_KEY) || '[]'); } catch (e) {}
+  return [...new Set([...a.filter((x) => REACTIONS.includes(x)), ...QUICK_REACTIONS])];
+}
+function pushRecentReact(emoji) {
+  try { localStorage.setItem(RECENT_REACT_KEY, JSON.stringify([emoji, ...recentReacts().filter((x) => x !== emoji)].slice(0, 16))); } catch (e) {}
+}
 
 function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
   const msgs = $('.msgs', container);
@@ -207,7 +230,7 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
     box.innerHTML = '';
     const r = m.reactions || {};
     const me = myOwner();
-    for (const e of REACTIONS) {
+    for (const e of Object.keys(r)) {
       const list = r[e];
       if (!list || !list.length) continue;
       const mineR = list.some((x) => x.owner === me);
@@ -226,14 +249,24 @@ function setupChat(container, getName, getExtra = () => ({}), opts = {}) {
   }
   let picker = null;
   function closePicker() { if (picker) { picker.remove(); picker = null; } }
-  function openPicker(anchor, m) {
+  // full = false: hàng nhanh (6 biểu cảm dùng gần đây + nút ＋); full = true: bảng đầy đủ
+  function openPicker(anchor, m, full = false) {
     closePicker();
-    picker = el('div', { class: 'react-picker', role: 'menu' },
-      REACTIONS.map((e) => el('button', { type: 'button', title: 'Thả ' + e, onclick: (ev) => { ev.stopPropagation(); react(m.id, e); } }, e)));
+    const btn = (e) => el('button', { type: 'button', title: 'Thả ' + e,
+      onclick: (ev) => { ev.stopPropagation(); pushRecentReact(e); react(m.id, e); } }, e);
+    const recent = recentReacts();
+    picker = full
+      ? el('div', { class: 'react-picker full', role: 'menu' },
+          el('div', { class: 'rp-head' }, 'Dùng gần đây'), el('div', { class: 'rp-grid' }, recent.slice(0, 8).map(btn)),
+          REACTION_GROUPS.flatMap(([name, list]) => [el('div', { class: 'rp-head' }, name), el('div', { class: 'rp-grid' }, list.map(btn))]))
+      : el('div', { class: 'react-picker', role: 'menu' }, recent.slice(0, 6).map(btn),
+          el('button', { type: 'button', class: 'rp-more', title: 'Thêm biểu cảm',
+            onclick: (ev) => { ev.stopPropagation(); openPicker(anchor, m, true); } }, '＋'));
     document.body.append(picker);
     const r = anchor.getBoundingClientRect(), pw = picker.offsetWidth, ph = picker.offsetHeight;
     const left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2));
-    const top = r.top - ph - 8 < 8 ? r.bottom + 8 : r.top - ph - 8;
+    let top = r.top - ph - 8 < 8 ? r.bottom + 8 : r.top - ph - 8;
+    top = Math.max(8, Math.min(window.innerHeight - ph - 8, top));
     picker.style.left = left + 'px'; picker.style.top = top + 'px';
   }
   document.addEventListener('click', (e) => { if (picker && !picker.contains(e.target)) closePicker(); });

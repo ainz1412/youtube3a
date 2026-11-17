@@ -57,6 +57,11 @@ Một số MV (thường của hãng đĩa) chỉ cho xem trên youtube.com. Khi
 - Lần đầu Chrome có thể chặn cửa sổ bật lên: bấm **Mở cửa sổ YouTube**, rồi chọn **Luôn cho phép cửa sổ bật lên** của trang ở cuối thanh địa chỉ.
 - Khi đang phát qua cửa sổ YouTube, nút Tạm dừng chỉ dừng đồng hồ đếm; hãy tạm dừng cả trong cửa sổ YouTube.
 
+## Thả biểu cảm & thanh thời gian
+
+- Bấm ☺ cạnh tin nhắn: hàng nhanh gồm 6 biểu cảm dùng gần đây và nút ＋ để mở bảng đầy đủ (gần 100 biểu cảm: mặt cười, cử chỉ, tim & âm nhạc, khác). Mỗi người thả 1 biểu cảm/tin; bấm lại để gỡ.
+- Trang người tham gia có thanh thời gian của bài đang phát, chạy theo đúng vị trí trên loa của phòng (máy phát báo vị trí mỗi 5 giây, giữa các lần báo trang tự tính tiếp).
+
 ## Bài từ SoundCloud
 
 - Người tham gia dán link bài SoundCloud (soundcloud.com/…, m.soundcloud.com/… hoặc link rút gọn on.soundcloud.com/… từ ứng dụng) vào tab **Dán link** hoặc ô tìm kiếm. Không tốn lượt tìm YouTube.

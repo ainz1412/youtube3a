@@ -100,6 +100,9 @@
       <h2><span class="eq"><i></i><i></i><i></i></span> Đang phát
         <button class="ghost watch-btn" id="watchBtn" type="button" title="Xem video đồng bộ với loa của phòng (tắt tiếng sẵn)">📺 Xem video</button></h2>
       <div id="now"><div class="empty">Chưa có bài nào. Hãy là người đầu tiên!</div></div>
+      <div class="np-time hidden" id="npTime" aria-label="Thời gian bài đang phát">
+        <span id="npT">0:00</span><div class="np-bar"><div id="npBar"></div></div><span id="npD">0:00</span>
+      </div>
       <div class="watch hidden" id="watchBox">
         <div class="frame"><div id="watchPlayer"></div><div class="msg hidden" id="watchMsg"></div></div>
         <div class="bar">
@@ -294,7 +297,24 @@
 
   // ---- 📺 Xem video đồng bộ với máy phát (tắt tiếng sẵn) ----
   let vp = null, vpReady = false, vpOn = false, lastP = null, blockedVid = null;
-  function onPlayer(p) { lastP = p ? { ...p, recvAt: Date.now() } : null; syncVideo(); }
+  function onPlayer(p) { lastP = p ? { ...p, recvAt: Date.now() } : null; syncVideo(); drawTimeline(); }
+
+  // ---- Thanh thời gian chạy theo loa của phòng ----
+  function drawTimeline() {
+    const n = current && current.nowPlaying;
+    const box = $('#npTime');
+    if (!n) { box.classList.add('hidden'); return; }
+    const live = !!lastP && lastP.videoId === n.videoId;   // máy phát đã báo vị trí của đúng bài này
+    const d = (live && lastP.d) || n.duration || 0;
+    let t = live ? livePos(lastP) : 0;
+    if (d) t = Math.min(t, d);
+    box.classList.remove('hidden');
+    box.classList.toggle('paused', live ? !!lastP.paused : !!current.paused);
+    $('#npT').textContent = fmtDur(t);
+    $('#npD').textContent = d ? fmtDur(d) : '--:--';
+    $('#npBar').style.width = d ? (t / d) * 100 + '%' : '0';
+  }
+  setInterval(drawTimeline, 250);
   function loadYT() {
     return new Promise((resolve) => {
       if (window.YT && window.YT.Player) return resolve();

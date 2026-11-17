@@ -156,9 +156,16 @@ function ptInfo(now = Date.now()) {
 }
 const SEARCH_EXHAUSTED_MSG = 'Hôm nay đã hết lượt tìm kiếm YouTube. Bạn vẫn thêm được bài bằng cách dán link YouTube.';
 const VIDEO_UNITS_PER_DAY = 10000;
-const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+// Biểu cảm thả vào tin nhắn (giống danh sách trong static/common.js)
+const REACTION_GROUPS = [
+  ['Mặt cười', '😀 😁 😂 🤣 😅 😆 😊 😇 🙂 😉 😋 😜 🤪 😎 🤩 🥳 😍 🥰 😘 🤗 🤭 🤔 😏 🙄 😴 🥱 😌 😮 😲 🤯 😳 😱 🥺 😢 😭 😤 😡 🤬 😬 🤡 💀 👻'],
+  ['Cử chỉ', '👍 👎 👏 🙌 🙏 💪 👌 ✌️ 🤞 🤙 🤘 👋 ✊ 🤝 💅 👀 🕺 💃'],
+  ['Tim & âm nhạc', '❤️ 🧡 💛 💚 💙 💜 🖤 💔 💯 🔥 ✨ ⭐ 💥 🎉 🎊 🎶 🎵 🎧 🎤 🎸 🥁 🎹'],
+  ['Khác', '🍻 ☕ 🌹 🍀 🌈 🦄 🐶 🐱 🐧 🐸 ✅ ❌ ❓ ‼️ 💤 🆗'],
+].map(([name, list]) => [name, list.split(' ')]);
+const REACTIONS = REACTION_GROUPS.flatMap((g) => g[1]);
 // Phiên bản giao diện: tăng mỗi lần cập nhật để tab cũ hiện nút "Tải lại" (phải giống APP_VERSION trong common.js)
-const APP_VERSION = '2026-11-12.5';
+const APP_VERSION = '2026-11-17.1';
 // Dữ liệu lấy từ YouTube API (tên bài, ảnh bìa…) trong chat và lịch sử được xóa sau tối đa 30 ngày
 const RETENTION_MS = 30 * 24 * 3600e3;
 
@@ -774,7 +781,8 @@ export class Room extends DurableObject {
     this.send(server, 'state', this.publicState());
     this.send(server, 'chatHistory', this.chat.slice(-50));
     this.broadcast('state', this.publicState(), server); // cập nhật danh sách online cho người khác
-    this.send(server, 'player', this.player); // vị trí bài đang phát, để xem video đồng bộ
+    // vị trí bài đang phát (age = số ms từ lúc máy phát báo, để thanh thời gian chạy đúng)
+    this.send(server, 'player', this.player && { ...this.player, age: Date.now() - this.player.at });
     if (isHost) this.broadcastHosts('speaker', this.speakerInfo()); // báo máy phát online / offline
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -823,7 +831,7 @@ export class Room extends DurableObject {
         np.duration = Math.round(this.player.d);
         this.changed();
       }
-      this.broadcast('player', { ...this.player, tab: !!m.tab }, ws);
+      this.broadcast('player', { ...this.player, tab: !!m.tab, age: 0 }, ws);
     }
   }
   webSocketClose(ws) {

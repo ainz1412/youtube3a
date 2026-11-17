@@ -37,7 +37,7 @@
   .urls { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--green); word-break: break-all; }
   .pin { font-size: 28px; font-weight: 800; letter-spacing: .1em; color: var(--text); }
   .progress { height: 4px; background: rgba(255,255,255,.25); border-radius: 2px; overflow: hidden; margin-top: 14px; }
-  .progress div { height: 100%; background: #fff; width: 0; transition: width .5s linear; }
+  .progress div { height: 100%; background: #fff; width: 0; transition: width .25s linear; }
   .progress:hover div { background: var(--green); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; height: auto; } #left { overflow: visible; } .chat .msgs { max-height: 40vh; } #queue { max-height: 40vh; } }
   .notice-form { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -615,7 +615,7 @@
     else {
       if (!speaker || !speaker.online) return toast('Máy phát đang tắt. Hãy mở trang Admin trên máy nối loa.', true);
       sendCmd('toggle');
-      if (remote) { remote = { ...remote, paused: !remote.paused, t: currentRemoteTime(), recvAt: Date.now() }; setPPLabel(remote.paused); }
+      if (remote) { remote = { ...remote, paused: !remote.paused, t: currentRemoteTime(), recvAt: Date.now(), age: 0 }; setPPLabel(remote.paused); }
     }
   });
   $('#skip').addEventListener('click', () => hapi('/api/host/next'));
@@ -648,21 +648,25 @@
   $('#clearQ').addEventListener('click', () => { if (confirm('Xóa toàn bộ hàng chờ?')) hapi('/api/host/clear'); });
   $('#clearChat').addEventListener('click', () => { if (confirm('Xóa toàn bộ chat?')) hapi('/api/host/clearchat'); });
 
-  function currentRemoteTime() {
-    if (!remote) return 0;
-    return remote.t + (remote.paused ? 0 : (Date.now() - remote.recvAt) / 1000);
-  }
+  const currentRemoteTime = () => livePos(remote);
   function drawProgress(t, d) {
     $('#prog').style.width = d ? Math.min(100, (t / d) * 100) + '%' : '0';
     $('#time').textContent = d ? fmtDur(t) + ' / ' + fmtDur(d) : '';
   }
+  // Thanh thời gian vẽ lại 4 lần/giây cho mượt
+  function progressNow() {
+    const n = state?.nowPlaying;
+    if (controlling() && tabMode) return [Math.min(tabElapsed(), tabMode.duration || Infinity), tabMode.duration];
+    if (controlling()) return playerReady && n && typeof player.getCurrentTime === 'function' ? [pTime(), pDur() || n.duration || 0] : [0, 0];
+    if (n && remote && (!remote.videoId || remote.videoId === n.videoId)) { const d = remote.d || n.duration; return [Math.min(currentRemoteTime(), d), d]; }
+    return [0, 0];
+  }
+  setInterval(() => drawProgress(...progressNow()), 250);
   let tick = 0;
   setInterval(() => {
     tick++;
     const n = state?.nowPlaying;
     if (controlling() && tabMode) {
-      const el2 = Math.min(tabElapsed(), tabMode.duration || Infinity);
-      drawProgress(el2, tabMode.duration);
       const left = Math.max(0, Math.round((tabMode.duration || 0) - tabElapsed()));
       const winClosed = !ytWin || ytWin.closed;
       $('#tabCountdown').textContent = tabMode.pausedAt ? 'Đã dừng đếm giờ' : winClosed && $('#tabBlocked').classList.contains('hidden')
@@ -677,12 +681,8 @@
     } else if (controlling()) {
       lockRate();
       if (!playerReady || !n || typeof player.getCurrentTime !== 'function') return;
-      drawProgress(pTime(), pDur() || n.duration || 0);
       if (tick % 5 === 0) reportStatus();
-    } else if (n && remote && (!remote.videoId || remote.videoId === n.videoId)) {
-      const d = remote.d || n.duration;
-      drawProgress(Math.min(currentRemoteTime(), d), d);
-    } else drawProgress(0, 0);
+    }
   }, 1000);
 
   // ---- Hiển thị ----

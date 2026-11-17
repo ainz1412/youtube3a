@@ -186,6 +186,20 @@ header .me a:hover { text-decoration: underline; }
 .react-picker { position: fixed; z-index: 60; background: #282828; border-radius: 999px; padding: 4px 6px; display: flex; gap: 2px; box-shadow: 0 8px 28px rgba(0,0,0,.6); }
 .react-picker button { background: transparent; font-size: 22px; padding: 4px 6px; border-radius: 50%; line-height: 1; font-weight: 400; }
 .react-picker button:hover { background: #3a3a3a; transform: scale(1.25); }
+.react-picker .rp-more { font-size: 18px; color: var(--muted); width: 34px; }
+.react-picker .rp-more:hover { color: var(--text); transform: none; }
+.react-picker.full { display: block; border-radius: 14px; padding: 6px 8px 10px; width: min(340px, calc(100vw - 16px)); max-height: min(340px, 62vh); overflow-y: auto; overscroll-behavior: contain; }
+.react-picker .rp-head { font-size: 12px; font-weight: 700; color: var(--muted); margin: 8px 4px 4px; position: sticky; top: -6px; background: #282828; padding: 2px 0; z-index: 1; }
+.react-picker .rp-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.react-picker.full button { font-size: 22px; padding: 5px 0; border-radius: 8px; }
+.react-picker.full button:hover { transform: scale(1.15); }
+
+/* thanh thời gian bài đang phát (trang người tham gia) */
+.np-time { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 12px; color: rgba(255,255,255,.72); font-variant-numeric: tabular-nums; }
+.np-time .np-bar { flex: 1; height: 4px; background: rgba(255,255,255,.22); border-radius: 2px; overflow: hidden; }
+.np-time .np-bar div { height: 100%; width: 0; background: #fff; border-radius: 2px; transition: width .25s linear; }
+.np-time.paused .np-bar div { background: rgba(255,255,255,.5); }
+.np-time .np-state { color: var(--muted); }
 
 /* thanh "Đang trả lời…" phía trên ô nhập */
 .replying { display: flex; align-items: center; gap: 8px; font-size: 12.5px; background: rgba(255,255,255,.06); border-left: 3px solid var(--green); border-radius: 8px; padding: 4px 4px 4px 12px; margin-top: 6px; color: var(--muted); }
